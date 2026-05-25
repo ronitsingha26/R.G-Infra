@@ -66,7 +66,8 @@ export function ProjectsPage() {
   const emptyPropForm = { name: '', address: '', land_north: '', land_south: '', land_east: '', land_west: '' }
   const emptyAptForm = {
     name: '', total_flats: '', numbering_pattern: '', parking_slots: '', electricity_details: '', transformer_details: '', water_connection_details: '',
-    floor_north: '', floor_south: '', floor_east: '', floor_west: ''
+    floor_north: '', floor_south: '', floor_east: '', floor_west: '',
+    floor_details: [{ floorName: '1', flatCount: '' }] as { floorName: string, flatCount: string }[]
   }
   const [propForm, setPropForm] = useState(emptyPropForm)
   const [aptForm, setAptForm] = useState({
@@ -219,7 +220,8 @@ export function ProjectsPage() {
         floor_south: aptForm.floor_south || undefined,
         floor_east: aptForm.floor_east || undefined,
         floor_west: aptForm.floor_west || undefined,
-      }
+        floor_details: aptForm.floor_details?.filter(f => f.floorName && f.flatCount) || [],
+      } as any
 
       if (aptModal.editing) {
         await api.updateApartment(aptModal.editing.id, payload)
@@ -841,8 +843,6 @@ export function ProjectsPage() {
       <Modal open={aptModal.open} onClose={() => setAptModal({ open: false, propId: 0 })} title={aptModal.editing ? 'Edit Apartment' : 'Add New Apartment'} wide closeOnBackdropClick={false}>
         <div className="grid gap-4 md:grid-cols-2">
           <Input label="Apartment Name" value={aptForm.name} onChange={(v) => setAptForm(s => ({...s, name: v}))} required placeholder="e.g. Tower A" />
-          <Input label="Total Flats" value={aptForm.total_flats} onChange={(v) => setAptForm(s => ({...s, total_flats: v, parking_slots: s.parking_slots || (v ? String(Number(v) * 2) : '') }))} type="number" placeholder="e.g. 50" />
-          <Input label="Numbering Pattern" value={aptForm.numbering_pattern} onChange={(v) => setAptForm(s => ({...s, numbering_pattern: v}))} placeholder="e.g. 101" />
           <Input label="Total Parking Slots" value={aptForm.parking_slots} onChange={(v) => setAptForm(s => ({...s, parking_slots: v}))} type="number" placeholder="e.g. 60" />
           <Input label="Electricity Details" value={aptForm.electricity_details} onChange={(v) => setAptForm(s => ({...s, electricity_details: v}))} placeholder="e.g. WBSEDCL" />
           <Input label="Transformer Details" value={aptForm.transformer_details} onChange={(v) => setAptForm(s => ({...s, transformer_details: v}))} placeholder="e.g. 500kVA" />
@@ -859,11 +859,54 @@ export function ProjectsPage() {
             </div>
           </div>
         </div>
+        
         {!aptModal.editing && (
-          <div className="mt-4 text-xs text-amber-700 bg-amber-50 p-3 rounded-lg">
-            <strong>Note:</strong> We will automatically generate {aptForm.total_flats || '0'} flats starting from {aptForm.numbering_pattern || '1'}. You can edit individual flat details later.
+          <div className="mt-6">
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-xs font-bold uppercase tracking-wide text-slate-500">Floor Configuration (Auto Flat Generation)</div>
+              <button 
+                className="text-xs text-orange-600 font-bold hover:underline"
+                onClick={() => setAptForm(s => ({ ...s, floor_details: [...(s.floor_details || []), { floorName: '', flatCount: '' }] }))}
+              >
+                + Add Floor
+              </button>
+            </div>
+            <div className="space-y-2 bg-slate-50 p-4 rounded-xl border border-slate-200">
+              {(aptForm.floor_details || []).map((floor, idx) => (
+                <div key={idx} className="flex items-end gap-3">
+                  <div className="flex-1">
+                    <Input label="Floor Name/No" value={floor.floorName} onChange={(v) => {
+                      const newFloors = [...(aptForm.floor_details || [])];
+                      newFloors[idx].floorName = v;
+                      setAptForm(s => ({ ...s, floor_details: newFloors }));
+                    }} placeholder="e.g. 1, 2, G" />
+                  </div>
+                  <div className="flex-1">
+                    <Input label="Number of Flats" value={floor.flatCount} type="number" onChange={(v) => {
+                      const newFloors = [...(aptForm.floor_details || [])];
+                      newFloors[idx].flatCount = v;
+                      setAptForm(s => ({ ...s, floor_details: newFloors, parking_slots: s.parking_slots || String(newFloors.reduce((acc, f) => acc + (parseInt(f.flatCount)||0), 0) * 2) }));
+                    }} placeholder="e.g. 4" />
+                  </div>
+                  <button 
+                    onClick={() => {
+                      const newFloors = [...(aptForm.floor_details || [])];
+                      newFloors.splice(idx, 1);
+                      setAptForm(s => ({ ...s, floor_details: newFloors }));
+                    }}
+                    className="p-2.5 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 hover:text-red-700 transition"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              ))}
+              <div className="text-xs text-slate-500 mt-2">
+                Flats will be numbered automatically. e.g. Floor 1 → 101, 102. Floor G → G1, G2.
+              </div>
+            </div>
           </div>
         )}
+
         <div className="mt-3 text-xs text-slate-500">
           Parking slots default to roughly 2 per flat so you can keep one primary slot per flat and still have extra paid parking available.
         </div>

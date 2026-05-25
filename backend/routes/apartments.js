@@ -26,10 +26,16 @@ router.post('/', verifyToken, async (req, res) => {
   const connection = await pool.getConnection();
   try {
     const {
-      name, property_id, total_flats, numbering_pattern, parking_slots, electricity_details, transformer_details, water_connection_details,
+      name, property_id, numbering_pattern, parking_slots, electricity_details, transformer_details, water_connection_details,
       floor_north, floor_south, floor_east, floor_west,
+      floor_details // Expected: [{ floorName: '1', flatCount: 4 }, ...]
     } = req.body;
+    let { total_flats } = req.body;
     if (!name) return res.status(400).json({ error: 'Apartment name is required' });
+
+    if (floor_details && Array.isArray(floor_details)) {
+      total_flats = floor_details.reduce((sum, f) => sum + (parseInt(f.flatCount, 10) || 0), 0);
+    }
 
     await connection.beginTransaction();
 
@@ -47,17 +53,38 @@ router.post('/', verifyToken, async (req, res) => {
 
     const aptId = result.insertId;
 
-    // Auto-generate flats if total_flats > 0
-    const tFlats = parseInt(total_flats, 10) || 0;
-    if (tFlats > 0) {
-      let startNum = 1;
-      if (numbering_pattern) {
-        const match = numbering_pattern.match(/\d+/);
-        if (match) startNum = parseInt(match[0], 10);
+    // Auto-generate flats
+    if (floor_details && Array.isArray(floor_details)) {
+      for (const f of floor_details) {
+        const count = parseInt(f.flatCount, 10) || 0;
+        const floorName = String(f.floorName || '').trim();
+        const parsedFloor = parseInt(floorName, 10);
+
+        for (let i = 1; i <= count; i++) {
+          let flatNumber = '';
+          if (!isNaN(parsedFloor) && parsedFloor > 0) {
+            flatNumber = String(parsedFloor * 100 + i);
+          } else if (floorName.toLowerCase() === 'g' || floorName.toLowerCase().startsWith('ground')) {
+            flatNumber = 'G' + i;
+          } else {
+            flatNumber = floorName + i;
+          }
+          await connection.query('INSERT INTO flats (apartment_id, flat_number, floor) VALUES (?, ?, ?)', [aptId, flatNumber, floorName]);
+        }
       }
-      
-      for (let i = 0; i < tFlats; i++) {
-        await connection.query('INSERT INTO flats (apartment_id, flat_number) VALUES (?, ?)', [aptId, String(startNum + i)]);
+    } else {
+      // Fallback to legacy total_flats logic
+      const tFlats = parseInt(total_flats, 10) || 0;
+      if (tFlats > 0) {
+        let startNum = 1;
+        if (numbering_pattern) {
+          const match = numbering_pattern.match(/\d+/);
+          if (match) startNum = parseInt(match[0], 10);
+        }
+        
+        for (let i = 0; i < tFlats; i++) {
+          await connection.query('INSERT INTO flats (apartment_id, flat_number) VALUES (?, ?)', [aptId, String(startNum + i)]);
+        }
       }
     }
 

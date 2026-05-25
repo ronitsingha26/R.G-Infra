@@ -1,6 +1,8 @@
 -- ============================================================
 -- R.G INFRA CRM — MySQL Schema
 -- ============================================================
+create database  rg_infra_crm;
+use rg_infra_crm;
 
 
 
@@ -147,9 +149,9 @@ CREATE TABLE IF NOT EXISTS infrastructure_details (
   parking_allotment        BOOLEAN DEFAULT FALSE,
   parking_slot_no          VARCHAR(100),
   extra_parking_allotment  BOOLEAN DEFAULT FALSE,
-  extra_vehicle_type       VARCHAR(20) DEFAULT NULL,
+  extra_vehicle_type       VARCHAR(200) DEFAULT NULL,
   extra_parking_count      INT DEFAULT 1,
-  extra_parking_slot_no    VARCHAR(100),
+  extra_parking_slot_no    VARCHAR(500),
   extra_parking_charge     DECIMAL(15,2) DEFAULT 0,
   transformer_apartment    VARCHAR(200),
   transformer_flat         VARCHAR(200),

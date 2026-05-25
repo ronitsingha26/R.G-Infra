@@ -67,7 +67,8 @@ export function ProjectsPage() {
   const emptyAptForm = {
     name: '', total_flats: '', numbering_pattern: '', parking_slots: '', electricity_details: '', transformer_details: '', water_connection_details: '',
     floor_north: '', floor_south: '', floor_east: '', floor_west: '',
-    floor_details: [{ floorName: '1', flatCount: '' }] as { floorName: string, flatCount: string }[]
+    floor_details: [{ floorName: '1', flatCount: '' }] as { floorName: string, flatCount: string }[],
+    uploadFile: null as File | null
   }
   const [propForm, setPropForm] = useState(emptyPropForm)
   const [aptForm, setAptForm] = useState({
@@ -129,11 +130,11 @@ export function ProjectsPage() {
 
   // Get filtered flats for an apartment
   const getFilteredFlats = (aptId: number) => {
-    const flats = getFlatsForApt(aptId)
+    let flats = getFlatsForApt(aptId)
     const filter = aptFilters[aptId] || 'all'
-    if (filter === 'booked') return flats.filter(f => !f.is_available)
-    if (filter === 'available') return flats.filter(f => f.is_available)
-    return flats
+    if (filter === 'booked') flats = flats.filter(f => !f.is_available)
+    else if (filter === 'available') flats = flats.filter(f => f.is_available)
+    return flats.sort((a, b) => String(a.flat_number).localeCompare(String(b.flat_number), undefined, { numeric: true }))
   }
 
   // Set filter for an apartment
@@ -227,8 +228,18 @@ export function ProjectsPage() {
         await api.updateApartment(aptModal.editing.id, payload)
         toast.push({ tone: 'success', title: 'Apartment updated' })
       } else {
-        await api.createApartment(payload)
-        toast.push({ tone: 'success', title: 'Apartment & Flats auto-generated' })
+        const apt = await api.createApartment(payload)
+        if (aptForm.uploadFile) {
+          try {
+            await api.bulkUploadFlatDetails(apt.id, aptForm.uploadFile)
+            await api.bulkUploadBookingStatus(apt.id, aptForm.uploadFile)
+            toast.push({ tone: 'success', title: 'Apartment & Flats uploaded successfully' })
+          } catch (uploadErr) {
+            toast.push({ tone: 'error', title: uploadErr instanceof Error ? uploadErr.message : 'Apartment created, but flat upload failed' })
+          }
+        } else {
+          toast.push({ tone: 'success', title: 'Apartment created successfully' })
+        }
       }
       setAptModal({ open: false, propId: 0 })
       loadData()
@@ -842,7 +853,7 @@ export function ProjectsPage() {
       {/* ─── Add/Edit Apartment Modal ─── */}
       <Modal open={aptModal.open} onClose={() => setAptModal({ open: false, propId: 0 })} title={aptModal.editing ? 'Edit Apartment' : 'Add New Apartment'} wide closeOnBackdropClick={false}>
         <div className="grid gap-4 md:grid-cols-2">
-          <Input label="Apartment Name" value={aptForm.name} onChange={(v) => setAptForm(s => ({...s, name: v}))} required placeholder="e.g. Tower A" />
+          <Input label="Apartment Name" value={aptForm.name} onChange={(v) => setAptForm(s => ({...s, name: v}))} required placeholder="e.g. Block A" />
           <Input label="Total Parking Slots" value={aptForm.parking_slots} onChange={(v) => setAptForm(s => ({...s, parking_slots: v}))} type="number" placeholder="e.g. 60" />
           <Input label="Electricity Details" value={aptForm.electricity_details} onChange={(v) => setAptForm(s => ({...s, electricity_details: v}))} placeholder="e.g. WBSEDCL" />
           <Input label="Transformer Details" value={aptForm.transformer_details} onChange={(v) => setAptForm(s => ({...s, transformer_details: v}))} placeholder="e.g. 500kVA" />
@@ -862,46 +873,19 @@ export function ProjectsPage() {
         
         {!aptModal.editing && (
           <div className="mt-6">
-            <div className="flex items-center justify-between mb-2">
-              <div className="text-xs font-bold uppercase tracking-wide text-slate-500">Floor Configuration (Auto Flat Generation)</div>
-              <button 
-                className="text-xs text-orange-600 font-bold hover:underline"
-                onClick={() => setAptForm(s => ({ ...s, floor_details: [...(s.floor_details || []), { floorName: '', flatCount: '' }] }))}
-              >
-                + Add Floor
-              </button>
-            </div>
+            <div className="text-xs font-bold uppercase tracking-wide text-slate-500 mb-2">Upload Flats Data (Excel)</div>
             <div className="space-y-2 bg-slate-50 p-4 rounded-xl border border-slate-200">
-              {(aptForm.floor_details || []).map((floor, idx) => (
-                <div key={idx} className="flex items-end gap-3">
-                  <div className="flex-1">
-                    <Input label="Floor Name/No" value={floor.floorName} onChange={(v) => {
-                      const newFloors = [...(aptForm.floor_details || [])];
-                      newFloors[idx].floorName = v;
-                      setAptForm(s => ({ ...s, floor_details: newFloors }));
-                    }} placeholder="e.g. 1, 2, G" />
-                  </div>
-                  <div className="flex-1">
-                    <Input label="Number of Flats" value={floor.flatCount} type="number" onChange={(v) => {
-                      const newFloors = [...(aptForm.floor_details || [])];
-                      newFloors[idx].flatCount = v;
-                      setAptForm(s => ({ ...s, floor_details: newFloors, parking_slots: s.parking_slots || String(newFloors.reduce((acc, f) => acc + (parseInt(f.flatCount)||0), 0) * 2) }));
-                    }} placeholder="e.g. 4" />
-                  </div>
-                  <button 
-                    onClick={() => {
-                      const newFloors = [...(aptForm.floor_details || [])];
-                      newFloors.splice(idx, 1);
-                      setAptForm(s => ({ ...s, floor_details: newFloors }));
-                    }}
-                    className="p-2.5 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 hover:text-red-700 transition"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
-              ))}
+              <input 
+                type="file" 
+                accept=".xlsx,.xls,.csv"
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  if (file) setAptForm(s => ({ ...s, uploadFile: file }))
+                }}
+                className="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100"
+              />
               <div className="text-xs text-slate-500 mt-2">
-                Flats will be numbered automatically. e.g. Floor 1 → 101, 102. Floor G → G1, G2.
+                Upload an Excel file containing flats data. Columns expected: SL. NO., FLAT NO, TYPE, FLOOR, SUPER BUILT UP AREA, BOOKING STATUS, CUSTOMER NAME.
               </div>
             </div>
           </div>

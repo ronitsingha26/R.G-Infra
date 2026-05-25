@@ -19,8 +19,8 @@ const emptyForm = {
   flat_price: '', gst_percent: '',
   booking_amount: '', booking_percentage: '',
   parking_allotment: false, parking_slot_no: '',
-  extra_parking_allotment: false, extra_vehicle_type: '' as '' | 'bike' | 'car',
-  extra_parking_count: '', extra_parking_slot_no: '', extra_parking_charge: '',
+  extra_parking_allotment: false, 
+  extra_parkings: [{ type: 'car' as 'bike' | 'car', count: '1', slot: '', charge: '' }],
 }
 
 function parkingCodeFromFlat(flatNumber?: string | number | null, prefix = 'P') {
@@ -68,8 +68,13 @@ export function ClientsPage() {
       if (current.parking_allotment && current.parking_slot_no !== primaryParking) {
         next = { ...next, parking_slot_no: primaryParking }
       }
-      if (current.extra_parking_allotment && current.extra_parking_slot_no !== extraParking) {
-        next = { ...next, extra_parking_slot_no: extraParking }
+      if (current.extra_parking_allotment) {
+        next = {
+          ...next,
+          extra_parkings: next.extra_parkings.map((p, i) => 
+            i === 0 && !p.slot ? { ...p, slot: extraParking } : p
+          )
+        }
       }
       return next
     })
@@ -116,10 +121,10 @@ export function ClientsPage() {
         parking_allotment: form.parking_allotment,
         parking_slot_no: form.parking_slot_no || undefined,
         extra_parking_allotment: form.extra_parking_allotment,
-        extra_vehicle_type: form.extra_vehicle_type || undefined,
-        extra_parking_count: form.extra_parking_count ? Number(form.extra_parking_count) : undefined,
-        extra_parking_slot_no: form.extra_parking_slot_no || undefined,
-        extra_parking_charge: form.extra_parking_charge ? Number(form.extra_parking_charge) : undefined,
+        extra_vehicle_type: form.extra_parking_allotment ? form.extra_parkings.map(p => p.type).join(', ') : undefined,
+        extra_parking_count: form.extra_parking_allotment ? form.extra_parkings.reduce((sum, p) => sum + (Number(p.count) || 0), 0) : undefined,
+        extra_parking_slot_no: form.extra_parking_allotment ? form.extra_parkings.map(p => p.slot).filter(Boolean).join(', ') : undefined,
+        extra_parking_charge: form.extra_parking_allotment ? form.extra_parkings.reduce((sum, p) => sum + (Number(p.charge) || 0), 0) : undefined,
       } as any)
       toast.push({ tone: 'success', title: 'Client onboarded successfully' })
       setShowAdd(false)
@@ -264,7 +269,7 @@ export function ClientsPage() {
                   ...s,
                   flat_id: v,
                   parking_slot_no: s.parking_allotment ? primaryParking : '',
-                  extra_parking_slot_no: s.extra_parking_allotment ? extraParking : '',
+                  extra_parkings: s.extra_parking_allotment ? s.extra_parkings.map((p, i) => i === 0 ? { ...p, slot: extraParking } : p) : s.extra_parkings,
                 }))
               }}
               options={availableFlats.map((f) => ({
@@ -401,7 +406,7 @@ export function ClientsPage() {
                     type="radio"
                     name="parking"
                     checked={form.parking_allotment === false}
-                    onChange={() => setForm((s) => ({ ...s, parking_allotment: false, parking_slot_no: '' }))}
+                    onChange={() => setForm((s) => ({ ...s, parking_allotment: false, parking_slot_no: '', extra_parking_allotment: false }))}
                     className="accent-orange-500"
                   />
                   <span className="text-sm text-slate-700">No</span>
@@ -411,66 +416,122 @@ export function ClientsPage() {
             {form.parking_allotment && (
               <Input label="Primary Parking Slot No" value={form.parking_slot_no} onChange={(v) => setForm((s) => ({ ...s, parking_slot_no: v }))} placeholder="e.g. P101" />
             )}
-            <div className="md:col-span-2 rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-sm font-bold text-slate-700">Extra Parking</div>
-                  <div className="text-xs text-slate-500">Optional additional parking beyond the primary slot.</div>
-                </div>
-                <label className="flex items-center gap-2 cursor-pointer">
+            {form.parking_allotment && (
+              <div className="md:col-span-2 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-bold text-slate-700">Extra Parking</div>
+                    <div className="text-xs text-slate-500">Optional additional parking beyond the primary slot.</div>
+                  </div>
+                <div className="flex items-center gap-2 cursor-pointer mt-1">
                   <input
                     type="checkbox"
                     checked={form.extra_parking_allotment === true}
                     onChange={(e) => setForm((s) => ({
                       ...s,
                       extra_parking_allotment: e.target.checked,
-                      extra_vehicle_type: e.target.checked ? s.extra_vehicle_type : '' as '' | 'bike' | 'car',
-                      extra_parking_count: e.target.checked ? (s.extra_parking_count || '1') : '',
-                      extra_parking_slot_no: e.target.checked && selectedFlat ? parkingCodeFromFlat(selectedFlat.flat_number, 'EP') : '',
-                      extra_parking_charge: e.target.checked ? s.extra_parking_charge : '',
                     }))}
                     className="h-4 w-4 accent-orange-500"
                   />
                   <span className="text-sm font-semibold text-slate-700">Allocate extra parking</span>
-                </label>
+                </div>
               </div>
               {form.extra_parking_allotment && (
                 <div className="mt-4 space-y-4">
-                  {/* Vehicle Type */}
-                  <div>
-                    <label className="text-sm font-semibold text-slate-600">Type of Vehicle</label>
-                    <div className="mt-1.5 flex items-center gap-4">
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="radio"
-                          name="extra_vehicle_type"
-                          checked={form.extra_vehicle_type === 'bike'}
-                          onChange={() => setForm((s) => ({ ...s, extra_vehicle_type: 'bike' as 'bike' }))}
-                          className="accent-orange-500"
+                  {form.extra_parkings.map((parking, idx) => (
+                    <div key={idx} className="relative rounded-xl border border-slate-200 bg-white p-3 pt-4 shadow-sm">
+                      {form.extra_parkings.length > 1 && (
+                        <button
+                          onClick={() => setForm(s => ({ ...s, extra_parkings: s.extra_parkings.filter((_, i) => i !== idx) }))}
+                          className="absolute right-2 top-2 text-slate-400 hover:text-red-500"
+                          title="Remove parking"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                        </button>
+                      )}
+                      
+                      <div>
+                        <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Type of Vehicle</label>
+                        <div className="mt-2 flex items-center gap-4">
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="radio"
+                              name={`extra_vehicle_type_${idx}`}
+                              checked={parking.type === 'bike'}
+                              onChange={() => setForm(s => {
+                                const newP = [...s.extra_parkings];
+                                newP[idx].type = 'bike';
+                                return { ...s, extra_parkings: newP };
+                              })}
+                              className="accent-orange-500"
+                            />
+                            <span className="text-sm text-slate-700">🏍️ Bike</span>
+                          </label>
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="radio"
+                              name={`extra_vehicle_type_${idx}`}
+                              checked={parking.type === 'car'}
+                              onChange={() => setForm(s => {
+                                const newP = [...s.extra_parkings];
+                                newP[idx].type = 'car';
+                                return { ...s, extra_parkings: newP };
+                              })}
+                              className="accent-orange-500"
+                            />
+                            <span className="text-sm text-slate-700">🚗 Car</span>
+                          </label>
+                        </div>
+                      </div>
+                      <div className="mt-3 grid gap-3 md:grid-cols-3">
+                        <Input 
+                          label="No. of Parking" 
+                          value={parking.count} 
+                          onChange={(v) => setForm(s => {
+                            const newP = [...s.extra_parkings];
+                            newP[idx].count = v;
+                            return { ...s, extra_parkings: newP };
+                          })} 
+                          type="number" 
+                          placeholder="e.g. 1" 
                         />
-                        <span className="text-sm text-slate-700">🏍️ Bike</span>
-                      </label>
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="radio"
-                          name="extra_vehicle_type"
-                          checked={form.extra_vehicle_type === 'car'}
-                          onChange={() => setForm((s) => ({ ...s, extra_vehicle_type: 'car' as 'car' }))}
-                          className="accent-orange-500"
+                        <Input 
+                          label="Parking Slot No" 
+                          value={parking.slot} 
+                          onChange={(v) => setForm(s => {
+                            const newP = [...s.extra_parkings];
+                            newP[idx].slot = v;
+                            return { ...s, extra_parkings: newP };
+                          })} 
+                          placeholder="e.g. EP101" 
                         />
-                        <span className="text-sm text-slate-700">🚗 Car</span>
-                      </label>
+                        <Input 
+                          label="Additional Charge (₹)" 
+                          value={parking.charge} 
+                          onChange={(v) => setForm(s => {
+                            const newP = [...s.extra_parkings];
+                            newP[idx].charge = v;
+                            return { ...s, extra_parkings: newP };
+                          })} 
+                          type="number" 
+                          placeholder="e.g. 250000" 
+                        />
+                      </div>
                     </div>
-                  </div>
-                  {/* Count + Slot + Charge */}
-                  <div className="grid gap-4 md:grid-cols-3">
-                    <Input label="No. of Parking" value={form.extra_parking_count} onChange={(v) => setForm((s) => ({ ...s, extra_parking_count: v }))} type="number" placeholder="e.g. 1" />
-                    <Input label="Parking Slot No" value={form.extra_parking_slot_no} onChange={(v) => setForm((s) => ({ ...s, extra_parking_slot_no: v }))} placeholder="e.g. EP101" />
-                    <Input label="Additional Charge (₹)" value={form.extra_parking_charge} onChange={(v) => setForm((s) => ({ ...s, extra_parking_charge: v }))} type="number" placeholder="e.g. 250000" />
-                  </div>
+                  ))}
+                  <button
+                    onClick={() => setForm(s => ({
+                      ...s,
+                      extra_parkings: [...s.extra_parkings, { type: 'car', count: '1', slot: '', charge: '' }]
+                    }))}
+                    className="flex items-center gap-1 text-sm font-semibold text-orange-600 hover:text-orange-700 hover:underline"
+                  >
+                    <Plus className="h-4 w-4" /> Add Parking
+                  </button>
                 </div>
               )}
             </div>
+            )}
           </div>
         </div>
 

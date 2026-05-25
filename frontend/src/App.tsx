@@ -20,6 +20,8 @@ const PaymentSchedulePage = lazy(() => import('./portal/pages/PaymentSchedulePag
 const ReminderLogsPage = lazy(() => import('./portal/pages/ReminderLogsPage.tsx').then(m => ({ default: m.ReminderLogsPage })))
 const ClientHistoryPage = lazy(() => import('./portal/pages/ClientHistoryPage.tsx').then(m => ({ default: m.ClientHistoryPage })))
 const BackupDataPage = lazy(() => import('./portal/pages/BackupDataPage.tsx').then(m => ({ default: m.BackupDataPage })))
+const WorkProjectionPage = lazy(() => import('./portal/pages/WorkProjectionPage.tsx').then(m => ({ default: m.WorkProjectionPage })))
+const WorkProjectionClientPage = lazy(() => import('./portal/pages/WorkProjectionClientPage.tsx').then(m => ({ default: m.WorkProjectionClientPage })))
 
 function App() {
   const location = useLocation()
@@ -62,6 +64,8 @@ function App() {
               <Route path="reminders" element={<ReminderLogsPage />} />
               <Route path="client-history" element={<ClientHistoryPage />} />
               <Route path="backup-data" element={<BackupDataPage />} />
+              <Route path="work-projection" element={<WorkProjectionPage />} />
+              <Route path="work-projection/:clientId" element={<WorkProjectionClientPage />} />
 
               <Route path="settings" element={<SettingsPage />} />
             </Route>

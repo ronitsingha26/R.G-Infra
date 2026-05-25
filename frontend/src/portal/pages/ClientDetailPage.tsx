@@ -3,7 +3,7 @@
  * Shows Phase 1 fields: Client Info, Property Details, Infrastructure, Payments, Communication
  */
 
-import { ArrowLeft, Building2, MapPin, Pencil, Trash2, User } from 'lucide-react'
+import { ArrowLeft, Building2, HardHat, MapPin, Pencil, Trash2, User } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { api, type Client } from '../api'
@@ -113,6 +113,7 @@ export function ClientDetailPage() {
             {!client.apartment_name && !client.flat_number && 'No property assigned'}
           </div>
         </div>
+        <PortalButton variant="outline" onClick={() => navigate(`/portal/work-projection/${client.id}`)}><HardHat className="h-4 w-4" /> Work Projection</PortalButton>
         <PortalButton variant="outline" onClick={openEdit}><Pencil className="h-4 w-4" /> Edit</PortalButton>
         <PortalButton variant="danger" onClick={() => setDeleteConfirm(true)}><Trash2 className="h-4 w-4" /></PortalButton>
       </div>

@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
+import { readFileSync } from 'fs';
 import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
@@ -25,6 +26,7 @@ import paymentStageRoutes from './routes/paymentStages.js';
 import paymentScheduleRoutes from './routes/paymentSchedules.js';
 import reminderRoutes from './routes/reminders.js';
 import backupRoutes from './routes/backups.js';
+import workProjectionRoutes from './routes/workProjection.js';
 import { startDueReminderCron, stopDueReminderCron } from './services/dueReminderCron.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -89,6 +91,9 @@ app.options('*', cors(corsOptions)); // Handle pre-flight for all routes
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+// ─── Serve uploads directory for proof images ──────────────────────────────
+app.use('/uploads', express.static(join(__dirname, 'uploads')));
+
 // ─── Rate Limiting — Brute-force protection on login ──────────────────────
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -115,6 +120,7 @@ app.use('/api/payment-stages', paymentStageRoutes);
 app.use('/api/payment-schedules', paymentScheduleRoutes);
 app.use('/api/reminders', reminderRoutes);
 app.use('/api/backups', backupRoutes);
+app.use('/api/work-projection', workProjectionRoutes);
 
 // Health check
 app.get('/api/health', (_req, res) =>
@@ -168,12 +174,33 @@ app.use((err, req, res, _next) => {
 });
 
 // ─── Start Server ─────────────────────────────────────────────────────────
-httpServer.listen(PORT, () => {
+// ─── Auto-migrate: create work_projections table if needed ────────────────
+async function runMigrations() {
+  try {
+    const pool = (await import('./config/db.js')).default;
+    const migrationPath = join(__dirname, 'migrations', 'work_projection_migration.sql');
+    if (existsSync(migrationPath)) {
+      const sql = readFileSync(migrationPath, 'utf-8');
+      await pool.query(sql);
+      console.log('✅ Work projection migration applied');
+    }
+  } catch (err) {
+    // Table already exists or other non-critical error
+    if (err.code !== 'ER_TABLE_EXISTS_ERROR') {
+      console.warn('⚠️ Work projection migration note:', err.message);
+    }
+  }
+}
+
+httpServer.listen(PORT, async () => {
   console.log(`\n🚀 R.G INFRA API`);
   console.log(`   Port    : ${PORT}`);
   console.log(`   Mode    : ${process.env.NODE_ENV || 'development'}`);
   console.log(`   Origins : ${isProd ? allowedOrigins.join(', ') : '* (dev)'}`);
   console.log(`   Frontend: ${isProd && existsSync(frontendDist) ? frontendDist : 'served by Vite'}\n`);
+
+  // Run database migrations
+  await runMigrations();
 
   // Start automated due reminder cron job
   startDueReminderCron(io);

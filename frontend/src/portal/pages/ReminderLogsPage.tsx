@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Bell, Mail, FileText, Download, Clock, CheckCircle2, RefreshCw, Calendar, Send, Paperclip, Search, MessageCircle, AlertTriangle, Trash2 } from 'lucide-react'
+import { Bell, Mail, FileText, Download, Clock, CheckCircle2, RefreshCw, Calendar, Send, Paperclip, Search, MessageCircle, AlertTriangle, Trash2, CreditCard } from 'lucide-react'
 import { api, type PendingDue, type ReminderLog, type ReminderStats } from '../api'
 import { usePortalToast } from '../toast'
-import { PortalCard, PortalButton, Modal, EmptyState, inr } from '../ui'
+import { PortalCard, PortalButton, Modal, EmptyState, inr, Input } from '../ui'
 
 type Tab = 'upcoming' | 'history'
 
@@ -27,6 +27,14 @@ export function ReminderLogsPage() {
   const [initialSchedules, setInitialSchedules] = useState<any[]>([])
   const [dateLoading, setDateLoading] = useState(false)
   const [savingScheduleChanges, setSavingScheduleChanges] = useState(false)
+
+  // Add Payment modal
+  const [paymentModal, setPaymentModal] = useState<{ clientId: number; clientName: string; dueAmount: number } | null>(null)
+  const [paymentAmount, setPaymentAmount] = useState('')
+  const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0])
+  const [paymentMode, setPaymentMode] = useState('bank_transfer')
+  const [paymentRef, setPaymentRef] = useState('')
+  const [paymentSaving, setPaymentSaving] = useState(false)
 
   const load = async () => {
     try {
@@ -60,6 +68,33 @@ export function ReminderLogsPage() {
       || (dueFilter === 'overdue' ? !!currentDue && currentDue < today : !currentDue || currentDue >= today)
     return matchesSearch && matchesDueFilter
   }), [pendingDues, search, dueFilter])
+
+  // Handle save payment
+  const handleSavePayment = async () => {
+    if (!paymentModal) return
+    const amt = Number(paymentAmount)
+    if (!amt || isNaN(amt) || amt <= 0) {
+      toast.push({ tone: 'error', title: 'Enter a valid amount' })
+      return
+    }
+    setPaymentSaving(true)
+    try {
+      await api.addClientPayment({
+        client_id: paymentModal.clientId,
+        amount: amt,
+        payment_date: paymentDate,
+        payment_mode: paymentMode,
+        reference_no: paymentRef,
+      })
+      toast.push({ tone: 'success', title: 'Payment recorded successfully!' })
+      setPaymentModal(null)
+      load()
+    } catch (e) {
+      toast.push({ tone: 'error', title: e instanceof Error ? e.message : 'Failed to record payment' })
+    } finally {
+      setPaymentSaving(false)
+    }
+  }
 
   // Send enhanced reminder
   const handleSend = async () => {
@@ -354,6 +389,15 @@ export function ReminderLogsPage() {
 
                     {/* Actions */}
                     <div className="flex flex-col gap-1.5 shrink-0">
+                      <PortalButton onClick={() => {
+                        setPaymentModal({ clientId: due.client_id, clientName: due.client_name, dueAmount: due.combined_due })
+                        setPaymentAmount(String(due.combined_due))
+                        setPaymentDate(new Date().toISOString().split('T')[0])
+                        setPaymentMode('bank_transfer')
+                        setPaymentRef('')
+                      }} className="!text-xs !px-3 !py-1.5" variant="outline">
+                        <CreditCard className="h-3.5 w-3.5 text-emerald-600" /> Add Payment
+                      </PortalButton>
                       <PortalButton onClick={() => openDateEditor(due.client_id, due.client_name)} className="!text-xs !px-3 !py-1.5" variant="outline">
                         <Calendar className="h-3.5 w-3.5" /> Set Due Date
                       </PortalButton>
@@ -483,6 +527,34 @@ export function ReminderLogsPage() {
         </div>
       </Modal>
 
+      {/* ════ ADD PAYMENT MODAL ════ */}
+      <Modal open={!!paymentModal} onClose={() => setPaymentModal(null)} title={`Add Payment — ${paymentModal?.clientName || ''}`}>
+        <div className="space-y-4">
+          <Input label="Amount Paid (₹)" type="number" value={paymentAmount} onChange={setPaymentAmount} placeholder="0.00" />
+          <Input label="Payment Date" type="date" value={paymentDate} onChange={setPaymentDate} />
+          <div>
+            <label className="text-sm font-bold uppercase tracking-wider text-slate-500">Payment Mode</label>
+            <select
+              value={paymentMode}
+              onChange={(e) => setPaymentMode(e.target.value)}
+              className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-base font-medium text-slate-900 shadow-sm outline-none ring-orange-400/25 transition focus:border-orange-400 focus:ring-4"
+            >
+              <option value="bank_transfer">Bank Transfer (NEFT/RTGS/IMPS)</option>
+              <option value="cheque">Cheque</option>
+              <option value="cash">Cash</option>
+              <option value="upi">UPI</option>
+            </select>
+          </div>
+          <Input label="Reference No. / Cheque No." value={paymentRef} onChange={setPaymentRef} placeholder="Optional" />
+        </div>
+        <div className="mt-6 flex justify-end gap-2">
+          <PortalButton variant="outline" onClick={() => setPaymentModal(null)}>Cancel</PortalButton>
+          <PortalButton onClick={handleSavePayment} disabled={paymentSaving}>
+            {paymentSaving ? 'Saving...' : 'Save Payment'}
+          </PortalButton>
+        </div>
+      </Modal>
+
       {/* ════ DUE DATE EDITOR MODAL ════ */}
       <Modal open={!!dateModal} onClose={() => setDateModal(null)} title={`Set Due Dates — ${dateModal?.clientName || ''}`} wide>
         {dateLoading ? (
@@ -513,7 +585,8 @@ export function ReminderLogsPage() {
                   {s.stage_order}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5 text-sm font-bold text-slate-800">
+                  <div className="flex items-center gap-1.5 text-sm font-bold text-slate-800 flex-wrap">
+                    <span className="text-slate-800 font-extrabold mr-2">{s.stage_name || `Stage ${s.stage_order}`}</span>
                     <input 
                       type="number"
                       className="w-14 text-center border-b border-dashed border-slate-300 text-orange-600 bg-transparent outline-none focus:border-orange-500 appearance-none m-0 p-0 disabled:opacity-50 disabled:cursor-not-allowed font-bold"
@@ -591,11 +664,9 @@ export function ReminderLogsPage() {
             {(() => {
               const totalPct = schedules.reduce((sum: number, s: any) => sum + (Number(s.percentage) || 0), 0)
               return (
-                <div className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold ${
-                  Math.abs(totalPct - 100) < 0.01 ? 'bg-emerald-50 border border-emerald-200 text-emerald-700' : 'bg-red-50 border border-red-200 text-red-700'
-                }`}>
-                  {Math.abs(totalPct - 100) < 0.01 ? <CheckCircle2 className="h-3.5 w-3.5" /> : <AlertTriangle className="h-3.5 w-3.5" />}
-                  Total: {totalPct.toFixed(2)}% {Math.abs(totalPct - 100) < 0.01 ? '✓' : '(should be 100%)'}
+                <div className="flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold bg-slate-50 border border-slate-200 text-slate-700">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-slate-500" />
+                  Total Projected: {totalPct.toFixed(2)}%
                 </div>
               )
             })()}

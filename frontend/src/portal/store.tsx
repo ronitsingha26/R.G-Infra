@@ -78,6 +78,9 @@ export function PortalStoreProvider({ children }: { children: React.ReactNode })
     } else if (t.startsWith('schedule_') || t.startsWith('stage_') || t === 'stages_updated' || t.startsWith('demand_letter_') || t === 'due_reminders_processed') {
       refreshClients()
       refreshDashboard()
+    } else if (t === 'work_projection_updated') {
+      refreshClients()
+      refreshDashboard()
     } else {
       // Unknown event — refresh everything
       refresh()

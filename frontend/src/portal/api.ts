@@ -272,6 +272,39 @@ export const api = {
     if (filters.to_date) params.set('to_date', filters.to_date);
     return download(`/backups/export?${params.toString()}`);
   },
+
+  // Work Projection
+  getWorkProjectionClients: () => request<WorkProjectionClient[]>('/work-projection/all'),
+  getWorkProjectionMilestones: () => request<MilestoneDef[]>('/work-projection/milestones'),
+  getWorkProjection: (clientId: number) => request<WorkProjection[]>(`/work-projection/${clientId}`),
+  getWorkProjectionSummary: (clientId: number) => request<WorkProjectionSummary>(`/work-projection/summary/${clientId}`),
+  createWorkProjection: async (data: { client_id: number; milestone_name: string; completion_date?: string; notes?: string; proof_image?: File }): Promise<{ message: string; projection: WorkProjection }> => {
+    const formData = new FormData();
+    formData.append('client_id', String(data.client_id));
+    formData.append('milestone_name', data.milestone_name);
+    if (data.completion_date) formData.append('completion_date', data.completion_date);
+    if (data.notes) formData.append('notes', data.notes);
+    if (data.proof_image) formData.append('proof_image', data.proof_image);
+    const token = getToken();
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const res = await fetch(`${BASE_URL}/work-projection`, { method: 'POST', headers, body: formData });
+    if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error((b as { error?: string }).error || 'Failed to save'); }
+    return res.json();
+  },
+  updateWorkProjection: async (id: number, data: { completion_date?: string; notes?: string; proof_image?: File }): Promise<{ message: string; projection: WorkProjection }> => {
+    const formData = new FormData();
+    if (data.completion_date) formData.append('completion_date', data.completion_date);
+    if (data.notes !== undefined) formData.append('notes', data.notes || '');
+    if (data.proof_image) formData.append('proof_image', data.proof_image);
+    const token = getToken();
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const res = await fetch(`${BASE_URL}/work-projection/${id}`, { method: 'PUT', headers, body: formData });
+    if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error((b as { error?: string }).error || 'Failed to update'); }
+    return res.json();
+  },
+  deleteWorkProjection: (id: number) => request<{ message: string }>(`/work-projection/${id}`, { method: 'DELETE' }),
 };
 
 // ─── Types ─────────────────────────────────────
@@ -574,3 +607,37 @@ export type StageProgressItem = {
   paid_count: number; partial_count: number; pending_count: number;
   total_stage_amount: number; total_stage_paid: number; total_stage_due: number;
 };
+
+// Work Projection types
+export type WorkProjection = {
+  id: number | null; client_id: number; flat_id: number | null;
+  milestone_name: string; milestone_percentage: number; milestone_order: number;
+  completion_date: string | null; notes: string | null; proof_image: string | null;
+  status: 'pending' | 'completed';
+  created_by: number | null; created_at: string | null; updated_at: string | null;
+};
+
+export type WorkProjectionSummary = {
+  client: {
+    id: number; name: string; unique_client_id: string; phone: string; email: string;
+    apartment_name: string; property_name: string; flat_number: string;
+    floor: string; block: string;
+  };
+  total_property_amount: number; total_paid: number;
+  total_completed_percentage: number; total_due_generated: number;
+  remaining_collectable: number; total_pending_percentage: number;
+  milestones: WorkProjection[];
+  last_updated: string | null;
+};
+
+export type WorkProjectionClient = {
+  id: number; unique_client_id: string; name: string; phone: string; email: string;
+  flat_number: string; total_amount: number; apartment_name: string; property_name: string;
+  completed_percentage: number; completed_milestones: number;
+  last_updated: string | null;
+};
+
+export type MilestoneDef = {
+  name: string; percentage: number; order: number;
+};
+

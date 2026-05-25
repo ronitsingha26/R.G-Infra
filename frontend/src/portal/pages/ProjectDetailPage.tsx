@@ -25,7 +25,7 @@ export function ProjectDetailPage() {
   if (loading) return <div className="flex items-center justify-center py-24"><div className="h-8 w-8 animate-spin rounded-full border-4 border-orange-400 border-t-transparent" /></div>
   if (!project) return <EmptyState title="Project not found" />
 
-  const clientOpts = store.clients.map(c => ({ value: String(c.id), label: c.company_name }))
+  const clientOpts = store.clients.map(c => ({ value: String(c.id), label: c.company_name || c.name || c.unique_client_id || 'Client' }))
   const statusOpts = ['Planning','Ongoing','Delayed','Completed'].map(s => ({ value: s, label: s }))
   const modeOpts = ['UPI','Bank Transfer','Cheque','Cash','Other'].map(s => ({ value: s, label: s }))
 

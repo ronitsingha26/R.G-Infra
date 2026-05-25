@@ -19,7 +19,7 @@ export function Hero() {
     { kind: 'title', text: 'Building Your Vision,\nBrick by Brick.' },
     {
       kind: 'body',
-      text: 'Bajaj Developer Constructions delivers world-class residential, commercial, and industrial projects — on time, on budget, every time.',
+      text: 'R.G INFRA delivers world-class residential, commercial, and industrial projects — on time, on budget, every time.',
     },
   ] as const
 

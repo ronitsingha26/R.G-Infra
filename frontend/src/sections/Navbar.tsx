@@ -1,7 +1,8 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { HardHat, Menu, X } from 'lucide-react'
+import { Menu, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, NavLink, useLocation } from 'react-router-dom'
+import { BrandLogo } from '../portal/BrandLogo'
 
 const links = [
   { label: 'Home', href: '#home' },
@@ -49,10 +50,8 @@ export function Navbar() {
               to="/"
               className="flex items-center gap-2 font-heading text-base font-extrabold tracking-wide text-white"
             >
-              <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-orange-500/15 ring-1 ring-orange-400/30">
-                <HardHat className="h-5 w-5 text-orange-400" />
-              </span>
-              <span>Bajaj Developer Constructions</span>
+              <BrandLogo className="h-10 w-10 rounded-full border border-orange-400/30 bg-white p-1.5 shadow-sm" />
+              <span>R.G INFRA</span>
             </Link>
 
             <nav className="hidden items-center gap-7 md:flex">
@@ -118,8 +117,8 @@ export function Navbar() {
             >
               <div className="flex items-center justify-between px-5 py-4">
                 <div className="flex items-center gap-2 font-heading font-extrabold">
-                  <HardHat className="h-5 w-5 text-orange-400" />
-                  <span>Bajaj Developer Constructions</span>
+                  <BrandLogo className="h-8 w-8 rounded-full bg-white p-1" />
+                  <span>R.G INFRA</span>
                 </div>
                 <button
                   type="button"
@@ -171,4 +170,3 @@ export function Navbar() {
     </>
   )
 }
-

@@ -16,10 +16,10 @@ export function PortalToastProvider({ children }: { children: React.ReactNode })
   }, [])
 
   const toneColors: Record<string, string> = {
-    success: 'bg-emerald-50 border-emerald-200 text-emerald-700',
-    error: 'bg-red-50 border-red-200 text-red-700',
-    warning: 'bg-orange-50 border-orange-200 text-orange-700',
-    info: 'bg-blue-50 border-blue-200 text-blue-700',
+    success: 'bg-emerald-50/95 border-emerald-200 text-emerald-700',
+    error: 'bg-red-50/95 border-red-200 text-red-700',
+    warning: 'bg-orange-50/95 border-orange-200 text-orange-700',
+    info: 'bg-blue-50/95 border-blue-200 text-blue-700',
   }
 
   return (
@@ -27,7 +27,7 @@ export function PortalToastProvider({ children }: { children: React.ReactNode })
       {children}
       <div className="fixed bottom-6 right-6 z-[100] space-y-2">
         {toasts.map((t) => (
-          <div key={t.id} className={`animate-slide-up rounded-xl border px-5 py-3 text-sm font-semibold shadow-lg ${toneColors[t.tone] || toneColors.info}`}>
+          <div key={t.id} className={`animate-slide-up rounded-lg border px-5 py-3 text-sm font-bold shadow-[0_18px_55px_rgba(15,23,42,0.16)] backdrop-blur-xl ${toneColors[t.tone] || toneColors.info}`}>
             {t.title}
           </div>
         ))}

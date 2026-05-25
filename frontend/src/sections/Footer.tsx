@@ -1,5 +1,4 @@
 import {
-  HardHat,
   Mail,
   Globe,
   Image,
@@ -7,6 +6,7 @@ import {
   Play,
 } from 'lucide-react'
 import { motion } from 'framer-motion'
+import { BrandLogo } from '../portal/BrandLogo'
 
 const services = [
   'Residential Construction',
@@ -26,10 +26,8 @@ export function Footer() {
         <div className="grid gap-10 md:grid-cols-2 lg:grid-cols-4">
           <div>
             <div className="flex items-center gap-2 font-heading text-lg font-extrabold text-white">
-              <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-orange-500/15 ring-1 ring-orange-400/30">
-                <HardHat className="h-5 w-5 text-orange-400" />
-              </span>
-              <span>Bajaj Developer Constructions</span>
+              <BrandLogo className="h-10 w-10 rounded-full bg-white p-1.5 ring-1 ring-orange-400/30" />
+              <span>R.G INFRA</span>
             </div>
             <p className="mt-4 text-sm leading-relaxed text-white/70">
               Building trust through quality engineering, disciplined execution,
@@ -124,4 +122,3 @@ export function Footer() {
     </footer>
   )
 }
-

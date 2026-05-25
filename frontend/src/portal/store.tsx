@@ -46,7 +46,7 @@ export function PortalStoreProvider({ children }: { children: React.ReactNode })
 
   const refresh = useCallback(async () => {
     setLoading(true); setError(null)
-    try { await Promise.all([refreshClients(), refreshProjects(), refreshPayments(), refreshDashboard(), refreshContacts()]) }
+    try { await Promise.allSettled([refreshClients(), refreshProjects(), refreshPayments(), refreshDashboard(), refreshContacts()]) }
     catch (e) { setError(e instanceof Error ? e.message : 'Failed to load data') }
     finally { setLoading(false) }
   }, [refreshClients, refreshProjects, refreshPayments, refreshDashboard, refreshContacts])
@@ -74,6 +74,9 @@ export function PortalStoreProvider({ children }: { children: React.ReactNode })
       refreshDashboard()
     } else if (t === 'new_enquiry' || t === 'contact_read') {
       refreshContacts()
+      refreshDashboard()
+    } else if (t.startsWith('schedule_') || t.startsWith('stage_') || t === 'stages_updated' || t.startsWith('demand_letter_') || t === 'due_reminders_processed') {
+      refreshClients()
       refreshDashboard()
     } else {
       // Unknown event — refresh everything

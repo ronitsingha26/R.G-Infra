@@ -15,20 +15,25 @@ const ProjectDetailPage = lazy(() => import('./portal/pages/ProjectDetailPage.ts
 const PaymentsPage = lazy(() => import('./portal/pages/PaymentsPage.tsx').then(m => ({ default: m.PaymentsPage })))
 
 const SettingsPage = lazy(() => import('./portal/pages/SettingsPage.tsx').then(m => ({ default: m.SettingsPage })))
+const CommunicationHistoryPage = lazy(() => import('./portal/pages/CommunicationHistoryPage.tsx').then(m => ({ default: m.CommunicationHistoryPage })))
+const PaymentSchedulePage = lazy(() => import('./portal/pages/PaymentSchedulePage.tsx').then(m => ({ default: m.PaymentSchedulePage })))
+const ReminderLogsPage = lazy(() => import('./portal/pages/ReminderLogsPage.tsx').then(m => ({ default: m.ReminderLogsPage })))
+const ClientHistoryPage = lazy(() => import('./portal/pages/ClientHistoryPage.tsx').then(m => ({ default: m.ClientHistoryPage })))
+const BackupDataPage = lazy(() => import('./portal/pages/BackupDataPage.tsx').then(m => ({ default: m.BackupDataPage })))
 
 function App() {
   const location = useLocation()
 
   return (
     <div className="min-h-screen bg-bg">
-      <SmoothScroll />
-      <ScrollProgressBar />
       <AnimatePresence mode="wait" initial={false}>
         <Routes location={location} key={location.pathname}>
           <Route
             path="/"
             element={
               <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.35, ease: 'easeOut' }}>
+                <SmoothScroll />
+                <ScrollProgressBar />
                 <LoginPage />
               </motion.div>
             }
@@ -37,6 +42,8 @@ function App() {
             path="/login"
             element={
               <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.35, ease: 'easeOut' }}>
+                <SmoothScroll />
+                <ScrollProgressBar />
                 <LoginPage />
               </motion.div>
             }
@@ -50,6 +57,11 @@ function App() {
               <Route path="projects" element={<ProjectsPage />} />
               <Route path="projects/:id" element={<ProjectDetailPage />} />
               <Route path="payments" element={<PaymentsPage />} />
+              <Route path="communications" element={<CommunicationHistoryPage />} />
+              <Route path="payment-schedule" element={<PaymentSchedulePage />} />
+              <Route path="reminders" element={<ReminderLogsPage />} />
+              <Route path="client-history" element={<ClientHistoryPage />} />
+              <Route path="backup-data" element={<BackupDataPage />} />
 
               <Route path="settings" element={<SettingsPage />} />
             </Route>

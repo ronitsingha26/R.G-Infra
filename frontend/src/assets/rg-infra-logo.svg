@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 330" role="img" aria-labelledby="title">
+  <title id="title">R.G INFRA</title>
+  <defs>
+    <linearGradient id="gold" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#f6bd45"/>
+      <stop offset="0.55" stop-color="#c88212"/>
+      <stop offset="1" stop-color="#a86608"/>
+    </linearGradient>
+    <linearGradient id="ink" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#26333c"/>
+      <stop offset="1" stop-color="#0f1921"/>
+    </linearGradient>
+    <linearGradient id="side" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#6b747b"/>
+      <stop offset="1" stop-color="#202930"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="6" stdDeviation="6" flood-color="#0f1921" flood-opacity="0.18"/>
+    </filter>
+  </defs>
+  <g transform="translate(164 34) scale(1.32)" filter="url(#shadow)">
+    <path d="M18 124 C64 105 155 105 202 124 C151 117 69 117 18 124 Z" fill="#111c24"/>
+    <path d="M58 92 L58 72 L69 61 L69 110 L58 112 Z" fill="url(#side)"/>
+    <path d="M75 108 L75 45 L94 30 L94 107 Z" fill="url(#ink)"/>
+    <path d="M101 107 L101 16 L124 0 L124 107 Z" fill="url(#gold)"/>
+    <path d="M126 107 L126 0 L153 18 L153 107 Z" fill="url(#ink)"/>
+    <path d="M158 108 L158 40 L180 59 L180 111 Z" fill="url(#ink)"/>
+    <path d="M187 112 L187 74 L198 84 L198 116 Z" fill="url(#side)"/>
+    <path d="M121 4 L124 0 L124 107 L121 107 Z" fill="#fff" opacity="0.16"/>
+    <path d="M105 104 C107 83 113 70 124 67 L124 107 Z" fill="#7a4d0a" opacity="0.22"/>
+  </g>
+  <text x="310" y="276" text-anchor="middle" font-family="Montserrat, Arial, sans-serif" font-size="62" font-weight="800" letter-spacing="18" fill="#111c24">R.G INFRA</text>
+</svg>

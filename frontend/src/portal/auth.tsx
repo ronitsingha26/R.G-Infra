@@ -9,6 +9,7 @@ export type AuthState = {
   loading: boolean
   login: (userId: string, password: string) => Promise<User>
   logout: () => void
+  updateProfile: (data: { name: string; email: string }) => Promise<User>
   changePassword: (current: string, next: string) => Promise<void>
 }
 
@@ -40,6 +41,11 @@ export function PortalAuthProvider({ children }: { children: React.ReactNode }) 
     logout: () => {
       clearToken()
       setUser(null)
+    },
+    updateProfile: async (data) => {
+      const updated = await api.updateProfile(data)
+      setUser(updated)
+      return updated
     },
     changePassword: async (current, next) => {
       await api.changePassword(current, next)

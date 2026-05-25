@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { HardHat } from 'lucide-react'
+import { BrandLogo } from '../portal/BrandLogo'
 
 export function BrandedLoader({
   label = 'Loading…',
@@ -28,12 +28,11 @@ export function BrandedLoader({
           animate={{ rotate: 360 }}
           transition={{ duration: 1.15, repeat: Infinity, ease: 'linear' }}
         />
-        <div className="relative grid h-14 w-14 place-items-center rounded-full border border-border bg-card shadow-[0_20px_80px_rgba(0,0,0,0.25)]">
-          <HardHat className="h-6 w-6 text-primary" />
+        <div className="relative grid h-14 w-14 place-items-center rounded-full border border-border bg-white p-2 shadow-[0_20px_80px_rgba(0,0,0,0.25)]">
+          <BrandLogo className="h-full w-full" />
         </div>
       </div>
       <div className="mt-4 text-xs font-semibold text-muted">{label}</div>
     </div>
   )
 }
-

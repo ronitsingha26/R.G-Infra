@@ -13,7 +13,7 @@ type T = {
 const testimonials: T[] = [
   {
     quote:
-      'Bajaj Developer Constructions delivered our office complex 2 weeks ahead of schedule. Exceptional quality.',
+      'R.G INFRA delivered our office complex 2 weeks ahead of schedule. Exceptional quality.',
     name: 'Ramesh Gupta',
     company: 'TechPark Pvt Ltd',
     city: 'Pune',

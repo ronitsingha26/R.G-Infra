@@ -4,6 +4,8 @@ import pool from './config/db.js';
 
 dotenv.config();
 
+const DEFAULT_ADMIN_PASSWORD = 'admin123';
+
 async function seed() {
   try {
     console.log('🌱 Seeding database...');
@@ -13,12 +15,12 @@ async function seed() {
     if (existing.length > 0) {
       console.log('Admin user already exists — skipping');
     } else {
-      const hash = await bcrypt.hash('admin', 10);
+      const hash = await bcrypt.hash(DEFAULT_ADMIN_PASSWORD, 10);
       await pool.query(
         'INSERT INTO users (user_id, name, email, password, role) VALUES (?, ?, ?, ?, ?)',
-        ['admin', 'Admin', 'admin@bajajdeveloper.in', hash, 'admin']
+        ['admin', 'Admin', 'admin@rginfra.com', hash, 'admin']
       );
-      console.log('✅ Admin user created (userid: admin, password: admin)');
+      console.log(`✅ Admin user created (userid: admin, password: ${DEFAULT_ADMIN_PASSWORD})`);
     }
 
     console.log('🌱 Seed complete!');

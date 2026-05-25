@@ -11,11 +11,21 @@ import { dirname, join } from 'path';
 import { existsSync } from 'fs';
 
 import authRoutes from './routes/auth.js';
+import propertyRoutes from './routes/properties.js';
 import clientRoutes from './routes/clients.js';
 import projectRoutes from './routes/projects.js';
 import paymentRoutes from './routes/payments.js';
 import dashboardRoutes from './routes/dashboard.js';
 import contactRoutes from './routes/contact.js';
+import apartmentRoutes from './routes/apartments.js';
+import flatRoutes from './routes/flats.js';
+import demandLetterRoutes from './routes/demandLetters.js';
+import communicationRoutes from './routes/communications.js';
+import paymentStageRoutes from './routes/paymentStages.js';
+import paymentScheduleRoutes from './routes/paymentSchedules.js';
+import reminderRoutes from './routes/reminders.js';
+import backupRoutes from './routes/backups.js';
+import { startDueReminderCron, stopDueReminderCron } from './services/dueReminderCron.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -96,6 +106,15 @@ app.use('/api/projects', projectRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/contact', contactRoutes);
+app.use('/api/properties', propertyRoutes);
+app.use('/api/apartments', apartmentRoutes);
+app.use('/api/flats', flatRoutes);
+app.use('/api/demand-letters', demandLetterRoutes);
+app.use('/api/communications', communicationRoutes);
+app.use('/api/payment-stages', paymentStageRoutes);
+app.use('/api/payment-schedules', paymentScheduleRoutes);
+app.use('/api/reminders', reminderRoutes);
+app.use('/api/backups', backupRoutes);
 
 // Health check
 app.get('/api/health', (_req, res) =>
@@ -150,16 +169,20 @@ app.use((err, req, res, _next) => {
 
 // ─── Start Server ─────────────────────────────────────────────────────────
 httpServer.listen(PORT, () => {
-  console.log(`\n🚀 Bajaj Developer Constructions API`);
+  console.log(`\n🚀 R.G INFRA API`);
   console.log(`   Port    : ${PORT}`);
   console.log(`   Mode    : ${process.env.NODE_ENV || 'development'}`);
   console.log(`   Origins : ${isProd ? allowedOrigins.join(', ') : '* (dev)'}`);
   console.log(`   Frontend: ${isProd && existsSync(frontendDist) ? frontendDist : 'served by Vite'}\n`);
+
+  // Start automated due reminder cron job
+  startDueReminderCron(io);
 });
 
 // ─── Graceful Shutdown (for PM2 / Hostinger) ──────────────────────────────
 function shutdown(signal) {
   console.log(`\n🛑 ${signal} received. Closing HTTP server...`);
+  stopDueReminderCron(); // Stop cron before shutdown
   httpServer.close(() => {
     console.log('✅ HTTP server closed. Exiting.');
     process.exit(0);

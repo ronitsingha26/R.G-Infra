@@ -43,7 +43,7 @@ export function About() {
             </ScrollReveal>
             <ScrollReveal x={18} delay={0.1} y={0}>
               <p className="mt-4 text-sm leading-relaxed text-muted sm:text-base">
-                Bajaj Developer Constructions is a trusted name in residential, commercial,
+                R.G INFRA is a trusted name in residential, commercial,
                 and infrastructure development. We combine engineering rigor,
                 transparent planning, and disciplined execution to deliver
                 quality projects—on schedule and within budget.

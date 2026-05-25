@@ -55,7 +55,7 @@ export function WhyChooseUs() {
       <div className="container-page">
         <SectionHeading
           kicker="WHY CHOOSE US"
-          title="Why Clients Trust Bajaj Developer"
+          title="Why Clients Trust R.G INFRA"
           subtitle="A blend of disciplined execution, clear communication, and quality-first engineering—trusted across residential, commercial and infrastructure projects."
         />
 

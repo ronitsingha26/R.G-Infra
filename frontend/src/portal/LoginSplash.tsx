@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import logoFull from '../assets/rg-infra-logo.svg'
 
 type Props = {
   onComplete: () => void
@@ -21,7 +22,6 @@ export function LoginSplash({ onComplete }: Props) {
     }
 
     show('.ls-icon', 150)
-    show('.ls-brand', 600)
     show('.ls-welcome', 1200)
     show('.ls-bar', 1900)
 
@@ -88,47 +88,30 @@ export function LoginSplash({ onComplete }: Props) {
           style={{
             ...base,
             transform: 'scale(0.4) rotate(-160deg)',
-            width: 80,
-            height: 80,
+            width: 230,
+            height: 122,
             borderRadius: 20,
-            background: 'linear-gradient(135deg, #f97316, #ea580c)',
+            background: '#ffffff',
+            padding: 8,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            boxShadow: '0 20px 60px rgba(249,115,22,0.4)',
+            boxShadow: '0 20px 60px rgba(249,115,22,0.26)',
           }}
         >
-          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M2 20a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2H2v2Z"/>
-            <path d="M20 15a2 2 0 0 1 2 2v1H2v-1a2 2 0 0 1 2-2h16Z"/>
-            <path d="M20 15V9a8 8 0 1 0-16 0v6"/>
-            <path d="M12 1v2"/>
-          </svg>
-        </div>
-
-        {/* Brand */}
-        <div
-          className="ls-brand"
-          style={{ ...base, transform: 'translateY(22px)', marginTop: 32, textAlign: 'center' }}
-        >
-          <div style={{ fontSize: 30, fontWeight: 800, color: '#fff', letterSpacing: '-0.5px' }}>
-            BAJAJ DEVELOPER
-          </div>
-          <div style={{ fontSize: 13, fontWeight: 700, color: '#fb923c', letterSpacing: '0.3em', marginTop: 4 }}>
-            CONSTRUCTIONS
-          </div>
+          <img src={logoFull} alt="R.G INFRA" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
         </div>
 
         {/* Welcome */}
         <div
           className="ls-welcome"
-          style={{ ...base, transform: 'translateY(16px)', marginTop: 28, textAlign: 'center' }}
+          style={{ ...base, transform: 'translateY(16px)', marginTop: 30, textAlign: 'center' }}
         >
           <div style={{ fontSize: 13, fontWeight: 600, color: '#94a3b8', letterSpacing: '0.05em' }}>
             Welcome to
           </div>
-          <div style={{ fontSize: 22, fontWeight: 800, color: '#fff', marginTop: 4 }}>
-            Bajaj Developers 🏗️
+          <div style={{ fontSize: 22, fontWeight: 800, color: '#fff', marginTop: 4, letterSpacing: '-0.02em' }}>
+            R.G INFRA
           </div>
         </div>
 

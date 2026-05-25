@@ -74,6 +74,112 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+.portal-shell {
+  background:
+    radial-gradient(circle at 16% 8%, rgba(249, 115, 22, 0.08), transparent 30%),
+    radial-gradient(circle at 86% 4%, rgba(14, 165, 233, 0.07), transparent 28%),
+    linear-gradient(180deg, #f8fafc 0%, #f4f7fb 46%, #f7f8fb 100%);
+}
+
+.portal-main {
+  scrollbar-gutter: stable;
+}
+
+.portal-main::-webkit-scrollbar,
+.portal-shell nav::-webkit-scrollbar,
+.portal-shell .overflow-auto::-webkit-scrollbar,
+.portal-shell .overflow-y-auto::-webkit-scrollbar,
+.portal-shell .overflow-x-auto::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.portal-main::-webkit-scrollbar-track,
+.portal-shell nav::-webkit-scrollbar-track,
+.portal-shell .overflow-auto::-webkit-scrollbar-track,
+.portal-shell .overflow-y-auto::-webkit-scrollbar-track,
+.portal-shell .overflow-x-auto::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.portal-main::-webkit-scrollbar-thumb,
+.portal-shell nav::-webkit-scrollbar-thumb,
+.portal-shell .overflow-auto::-webkit-scrollbar-thumb,
+.portal-shell .overflow-y-auto::-webkit-scrollbar-thumb,
+.portal-shell .overflow-x-auto::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.45);
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+
+.portal-main::-webkit-scrollbar-thumb:hover,
+.portal-shell nav::-webkit-scrollbar-thumb:hover,
+.portal-shell .overflow-auto::-webkit-scrollbar-thumb:hover,
+.portal-shell .overflow-y-auto::-webkit-scrollbar-thumb:hover,
+.portal-shell .overflow-x-auto::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.58);
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+
+.portal-shell h1,
+.portal-shell h2 {
+  letter-spacing: -0.035em;
+}
+
+.portal-shell table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.portal-shell thead {
+  background: linear-gradient(180deg, #f8fafc, #f1f5f9);
+}
+
+.portal-shell th {
+  color: #64748b;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+}
+
+.portal-shell tbody tr {
+  transition: background-color 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.portal-shell input,
+.portal-shell select,
+.portal-shell textarea {
+  accent-color: #f97316;
+}
+
+.portal-shell input[type='date'],
+.portal-shell input[type='number'],
+.portal-shell input[type='text'],
+.portal-shell input[type='email'],
+.portal-shell input[type='password'],
+.portal-shell select,
+.portal-shell textarea {
+  border-radius: 0.5rem;
+}
+
+.portal-shell input[type='checkbox'] {
+  border-radius: 0.25rem;
+}
+
+.portal-shell button {
+  user-select: none;
+}
+
+.portal-shell .rounded-xl,
+.portal-shell .rounded-2xl {
+  border-radius: 0.5rem;
+}
+
+.portal-shell .shadow-sm {
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.05);
+}
+
 /* Lenis hooks */
 html.lenis,
 html.lenis body {

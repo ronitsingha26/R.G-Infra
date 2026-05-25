@@ -12,8 +12,9 @@ function RealTimeAlerts() {
   useSocket((event) => {
     switch (event.type) {
       case 'payment_added': {
-        const d = event.data as { client_name?: string; amount?: number } | undefined
-        toast.push({ tone: 'success', title: `💰 Payment received: ₹${Number(d?.amount || 0).toLocaleString('en-IN')} from ${d?.client_name || 'a client'}` })
+        const d = event.data as { client_name?: string; amount?: number; amount_paid?: number } | undefined
+        const amount = Number(d?.amount ?? d?.amount_paid ?? 0)
+        toast.push({ tone: 'success', title: `💰 Payment received: ₹${amount.toLocaleString('en-IN')} from ${d?.client_name || 'a client'}` })
         break
       }
       case 'new_enquiry': {
@@ -49,11 +50,11 @@ export function PortalLayout() {
     <PortalStoreProvider>
       <PortalToastProvider>
         <RealTimeAlerts />
-        <div className="flex h-screen w-full bg-slate-50 overflow-hidden">
+        <div className="portal-shell flex h-screen w-full overflow-hidden bg-[#f6f8fb] text-slate-900">
           <PortalSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
           <div className="flex flex-1 flex-col overflow-hidden min-w-0">
             <PortalTopbar onToggleSidebar={() => setSidebarOpen((s) => !s)} />
-            <main className="flex-1 overflow-y-auto p-6">
+            <main className="portal-main flex-1 overflow-y-auto overscroll-contain p-4 sm:p-6 lg:p-8">
               <Suspense fallback={<div className="flex items-center justify-center py-24"><div className="h-8 w-8 animate-spin rounded-full border-4 border-orange-400 border-t-transparent" /></div>}>
                 <Outlet />
               </Suspense>

@@ -21,7 +21,7 @@ export function getTransporter() {
   return transporter;
 }
 
-export async function sendMail({ to, subject, html }) {
+export async function sendMail({ to, subject, html, attachments }) {
   const t = getTransporter();
   if (!t) {
     console.warn('Email not sent (transporter not configured):', subject);
@@ -34,6 +34,7 @@ export async function sendMail({ to, subject, html }) {
       to,
       subject,
       html,
+      attachments: attachments || [],
     });
     console.log('✉️  Email sent:', info.messageId);
     return { success: true, messageId: info.messageId };

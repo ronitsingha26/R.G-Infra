@@ -6,7 +6,7 @@
 module.exports = {
   apps: [
     {
-      name: 'bajaj-construction',
+      name: 'rginfra-crm',
       script: './backend/server.js',
       cwd: './',                        // Root of the project
       instances: 1,                     // Hostinger shared plans = 1 instance

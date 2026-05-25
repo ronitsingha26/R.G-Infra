@@ -275,7 +275,7 @@ export function LoginPage() {
         <div className="text-center lg:col-start-2">
           <p className="text-[11px] font-medium text-slate-400/50">
             Designed and developed by{' '}
-            <span className="font-bold text-slate-300/60">BN IntelHub Pvt.Ltd</span>
+            <span className="font-bold text-slate-300/60">R.G Infra</span>
           </p>
         </div>
       </div>

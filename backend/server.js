@@ -181,7 +181,10 @@ async function runMigrations() {
     const migrationPath = join(__dirname, 'migrations', 'work_projection_migration.sql');
     if (existsSync(migrationPath)) {
       const sql = readFileSync(migrationPath, 'utf-8');
-      await pool.query(sql);
+      const statements = sql.split(';').map(s => s.trim()).filter(s => s.length > 0);
+      for (const statement of statements) {
+        await pool.query(statement);
+      }
       console.log('✅ Work projection migration applied');
     }
   } catch (err) {

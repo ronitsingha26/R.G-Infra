@@ -41,6 +41,12 @@ export function Input({
   label: string; value: string; onChange: (v: string) => void; type?: string
   placeholder?: string; disabled?: boolean; required?: boolean
 }) {
+  const handleWheel = (event: React.WheelEvent<HTMLInputElement>) => {
+    if (type === 'number') {
+      event.currentTarget.blur()
+    }
+  }
+
   return (
     <div>
       <label className="text-xs font-bold uppercase tracking-[0.08em] text-slate-500">{label}{required && <span className="text-red-500 ml-0.5">*</span>}</label>
@@ -48,6 +54,7 @@ export function Input({
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        onWheel={type === 'number' ? handleWheel : undefined}
         placeholder={placeholder}
         disabled={disabled}
         className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] placeholder:text-slate-400 outline-none ring-orange-400/25 transition focus:border-orange-400 focus:ring-4 disabled:bg-slate-100 disabled:text-slate-500"

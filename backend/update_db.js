@@ -28,7 +28,10 @@ async function updateDB() {
       )
     `);
 
-    await addColumnIfMissing('properties', 'land_north', 'VARCHAR(500) NULL', 'address');
+    await addColumnIfMissing('properties', 'electricity_details', 'VARCHAR(200) NULL', 'address');
+    await addColumnIfMissing('properties', 'transformer_details', 'VARCHAR(200) NULL', 'electricity_details');
+    await addColumnIfMissing('properties', 'water_connection_details', 'TEXT NULL', 'transformer_details');
+    await addColumnIfMissing('properties', 'land_north', 'VARCHAR(500) NULL', 'water_connection_details');
     await addColumnIfMissing('properties', 'land_south', 'VARCHAR(500) NULL', 'land_north');
     await addColumnIfMissing('properties', 'land_east', 'VARCHAR(500) NULL', 'land_south');
     await addColumnIfMissing('properties', 'land_west', 'VARCHAR(500) NULL', 'land_east');

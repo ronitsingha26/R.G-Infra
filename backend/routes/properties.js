@@ -18,13 +18,23 @@ router.get('/', verifyToken, async (req, res) => {
 // POST /api/properties
 router.post('/', verifyToken, async (req, res) => {
   try {
-    const { name, address, land_north, land_south, land_east, land_west } = req.body;
+    const { name, address, electricity_details, transformer_details, water_connection_details, land_north, land_south, land_east, land_west } = req.body;
     if (!name) return res.status(400).json({ error: 'Property name is required' });
 
     const [result] = await pool.query(
-      `INSERT INTO properties (name, address, land_north, land_south, land_east, land_west)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [name, address || null, land_north || null, land_south || null, land_east || null, land_west || null]
+      `INSERT INTO properties (name, address, electricity_details, transformer_details, water_connection_details, land_north, land_south, land_east, land_west)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        name,
+        address || null,
+        electricity_details || null,
+        transformer_details || null,
+        water_connection_details || null,
+        land_north || null,
+        land_south || null,
+        land_east || null,
+        land_west || null,
+      ]
     );
     const [rows] = await pool.query('SELECT * FROM properties WHERE id = ?', [result.insertId]);
     req.app.get('io')?.emit('data_changed', { type: 'project_added' });
@@ -39,14 +49,25 @@ router.post('/', verifyToken, async (req, res) => {
 // PUT /api/properties/:id
 router.put('/:id', verifyToken, async (req, res) => {
   try {
-    const { name, address, land_north, land_south, land_east, land_west } = req.body;
+    const { name, address, electricity_details, transformer_details, water_connection_details, land_north, land_south, land_east, land_west } = req.body;
     if (!name) return res.status(400).json({ error: 'Property name is required' });
 
     await pool.query(
       `UPDATE properties
-       SET name = ?, address = ?, land_north = ?, land_south = ?, land_east = ?, land_west = ?
+       SET name = ?, address = ?, electricity_details = ?, transformer_details = ?, water_connection_details = ?, land_north = ?, land_south = ?, land_east = ?, land_west = ?
        WHERE id = ?`,
-      [name, address || null, land_north || null, land_south || null, land_east || null, land_west || null, req.params.id]
+      [
+        name,
+        address || null,
+        electricity_details || null,
+        transformer_details || null,
+        water_connection_details || null,
+        land_north || null,
+        land_south || null,
+        land_east || null,
+        land_west || null,
+        req.params.id,
+      ]
     );
     const [rows] = await pool.query('SELECT * FROM properties WHERE id = ?', [req.params.id]);
     if (rows.length === 0) return res.status(404).json({ error: 'Property not found' });

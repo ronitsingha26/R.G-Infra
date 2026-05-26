@@ -310,7 +310,7 @@ export const api = {
 // ─── Types ─────────────────────────────────────
 export type Client = {
   id: number; unique_client_id: string; name: string; phone: string; email: string;
-  address: string; pan_aadhaar?: string; purchase_date: string; flat_id: number;
+  address: string; pan_aadhaar?: string; pan_number?: string; aadhaar_number?: string; purchase_date: string; flat_id: number;
   // Joined fields from flats + apartments + infrastructure
   flat_number?: string; floor?: string; block?: string; sbu_area?: number; total_amount?: number; gst_percent?: number; gst_amount?: number; total_amount_with_gst?: number; flat_status?: 'available' | 'reserved' | 'booked';
   property_name?: string; apartment_name?: string; apartment_id?: number;
@@ -389,6 +389,7 @@ export type ContactSubmission = {
 
 export type Property = {
   id: number; name: string; address?: string;
+  electricity_details?: string; transformer_details?: string; water_connection_details?: string;
   land_north?: string; land_south?: string; land_east?: string; land_west?: string;
   created_at?: string; updated_at?: string;
 };

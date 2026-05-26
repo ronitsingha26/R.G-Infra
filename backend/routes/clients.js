@@ -154,7 +154,7 @@ router.post('/', verifyToken, async (req, res) => {
   const connection = await pool.getConnection();
   try {
     const { 
-      name, phone, email, address, pan_aadhaar, purchase_date, flat_id, flat_price, gst_percent,
+      name, phone, email, address, pan_aadhaar, pan_number, aadhaar_number, purchase_date, flat_id, flat_price, gst_percent,
       booking_amount, booking_percentage,
       parking_allotment, parking_slot_no,
       extra_parking_allotment, extra_vehicle_type, extra_parking_count, extra_parking_slot_no, extra_parking_charge,
@@ -182,7 +182,13 @@ router.post('/', verifyToken, async (req, res) => {
     }
 
     const [aptRows] = await connection.query(
-      'SELECT electricity_details, transformer_details, water_connection_details FROM apartments WHERE id = ? FOR UPDATE',
+      `SELECT
+        COALESCE(p.electricity_details, a.electricity_details) AS electricity_details,
+        COALESCE(p.transformer_details, a.transformer_details) AS transformer_details,
+        COALESCE(p.water_connection_details, a.water_connection_details) AS water_connection_details
+      FROM apartments a
+      LEFT JOIN properties p ON a.property_id = p.id
+      WHERE a.id = ? FOR UPDATE`,
       [flats[0].apartment_id]
     );
     const apartmentInfra = aptRows[0] || {};
@@ -196,9 +202,21 @@ router.post('/', verifyToken, async (req, res) => {
     const booking_id = makeBookingId(nextId);
 
     // 3. Insert Client
+    const combinedPanAadhaar = pan_aadhaar || [pan_number, aadhaar_number].filter(Boolean).join(' / ') || null;
     const [clientResult] = await connection.query(
-      'INSERT INTO clients (unique_client_id, name, phone, email, address, pan_aadhaar, purchase_date, flat_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      [unique_client_id, name, phone || null, email || null, address || null, pan_aadhaar || null, purchase_date || null, flat_id]
+      'INSERT INTO clients (unique_client_id, name, phone, email, address, pan_aadhaar, pan_number, aadhaar_number, purchase_date, flat_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [
+        unique_client_id,
+        name,
+        phone || null,
+        email || null,
+        address || null,
+        combinedPanAadhaar,
+        pan_number || null,
+        aadhaar_number || null,
+        purchase_date || null,
+        flat_id,
+      ]
     );
 
     // 4. Update Flat availability
@@ -297,7 +315,7 @@ router.put('/:id', verifyToken, async (req, res) => {
   const connection = await pool.getConnection();
   try {
     const { 
-      name, phone, email, address, pan_aadhaar, purchase_date, flat_id,
+      name, phone, email, address, pan_aadhaar, pan_number, aadhaar_number, purchase_date, flat_id,
       parking_allotment, parking_slot_no,
       extra_parking_allotment, extra_vehicle_type, extra_parking_count, extra_parking_slot_no, extra_parking_charge,
       transformer_apartment, transformer_flat, corpus_fund, electricity_board_source, water_connection_details
@@ -323,7 +341,13 @@ router.put('/:id', verifyToken, async (req, res) => {
       }
 
       const [aptRows] = await connection.query(
-        'SELECT electricity_details, transformer_details, water_connection_details FROM apartments WHERE id = ? FOR UPDATE',
+        `SELECT
+          COALESCE(p.electricity_details, a.electricity_details) AS electricity_details,
+          COALESCE(p.transformer_details, a.transformer_details) AS transformer_details,
+          COALESCE(p.water_connection_details, a.water_connection_details) AS water_connection_details
+        FROM apartments a
+        LEFT JOIN properties p ON a.property_id = p.id
+        WHERE a.id = ? FOR UPDATE`,
         [flats[0].apartment_id]
       );
       const apartmentInfra = aptRows[0] || {};
@@ -366,7 +390,16 @@ router.put('/:id', verifyToken, async (req, res) => {
       );
     } else if (flat_id) {
       const [flatRows] = await connection.query(
-        'SELECT f.id, f.flat_number, a.electricity_details, a.transformer_details, a.water_connection_details FROM flats f LEFT JOIN apartments a ON f.apartment_id = a.id WHERE f.id = ? FOR UPDATE',
+        `SELECT
+          f.id,
+          f.flat_number,
+          COALESCE(p.electricity_details, a.electricity_details) AS electricity_details,
+          COALESCE(p.transformer_details, a.transformer_details) AS transformer_details,
+          COALESCE(p.water_connection_details, a.water_connection_details) AS water_connection_details
+        FROM flats f
+        LEFT JOIN apartments a ON f.apartment_id = a.id
+        LEFT JOIN properties p ON a.property_id = p.id
+        WHERE f.id = ? FOR UPDATE`,
         [flat_id]
       );
       const flatDetails = flatRows[0] || {};
@@ -397,9 +430,21 @@ router.put('/:id', verifyToken, async (req, res) => {
     }
 
     // Update Client
+    const combinedPanAadhaar = pan_aadhaar || [pan_number, aadhaar_number].filter(Boolean).join(' / ') || null;
     await connection.query(
-      'UPDATE clients SET name = ?, phone = ?, email = ?, address = ?, pan_aadhaar = ?, purchase_date = ?, flat_id = ? WHERE id = ?',
-      [name, phone || null, email || null, address || null, pan_aadhaar || null, purchase_date || null, flat_id || oldFlatId, req.params.id]
+      'UPDATE clients SET name = ?, phone = ?, email = ?, address = ?, pan_aadhaar = ?, pan_number = ?, aadhaar_number = ?, purchase_date = ?, flat_id = ? WHERE id = ?',
+      [
+        name,
+        phone || null,
+        email || null,
+        address || null,
+        combinedPanAadhaar,
+        pan_number || null,
+        aadhaar_number || null,
+        purchase_date || null,
+        flat_id || oldFlatId,
+        req.params.id,
+      ]
     );
 
     await connection.commit();

@@ -14,7 +14,7 @@ import { usePortalToast } from '../toast'
 import { EmptyState, inr, Input, Select, Modal, PortalButton, PortalCard, Textarea } from '../ui'
 
 const emptyForm = {
-  name: '', phone: '', email: '', address: '', pan_aadhaar: '', purchase_date: '',
+  name: '', phone: '', email: '', address: '', pan_number: '', aadhaar_number: '', purchase_date: '',
   property_id: '', apartment_id: '', flat_id: '',
   flat_price: '', gst_percent: '',
   booking_amount: '', booking_percentage: '',
@@ -111,7 +111,8 @@ export function ClientsPage() {
         phone: form.phone,
         email: form.email,
         address: form.address,
-        pan_aadhaar: form.pan_aadhaar || undefined,
+        pan_number: form.pan_number || undefined,
+        aadhaar_number: form.aadhaar_number || undefined,
         purchase_date: form.purchase_date || undefined,
         flat_id: Number(form.flat_id),
         flat_price: form.flat_price ? Number(form.flat_price) : undefined,
@@ -229,7 +230,8 @@ export function ClientsPage() {
             <Input label="Client Name" value={form.name} onChange={(v) => setForm((s) => ({ ...s, name: v }))} required />
             <Input label="Phone" value={form.phone} onChange={(v) => setForm((s) => ({ ...s, phone: v }))} />
             <Input label="Email" value={form.email} onChange={(v) => setForm((s) => ({ ...s, email: v }))} type="email" />
-            <Input label="PAN / Aadhaar" value={form.pan_aadhaar} onChange={(v) => setForm((s) => ({ ...s, pan_aadhaar: v }))} />
+            <Input label="PAN" value={form.pan_number} onChange={(v) => setForm((s) => ({ ...s, pan_number: v }))} />
+            <Input label="Aadhaar" value={form.aadhaar_number} onChange={(v) => setForm((s) => ({ ...s, aadhaar_number: v }))} />
             <Input label="Purchase Date" value={form.purchase_date} onChange={(v) => setForm((s) => ({ ...s, purchase_date: v }))} type="date" />
           </div>
           <div className="mt-3">

@@ -63,9 +63,19 @@ export function ProjectsPage() {
   const [aptModal, setAptModal] = useState<{ open: boolean; propId: number; editing?: Apartment }>({ open: false, propId: 0 })
   const [flatModal, setFlatModal] = useState<{ open: boolean; aptId: number; editing?: Flat }>({ open: false, aptId: 0 })
 
-  const emptyPropForm = { name: '', address: '', land_north: '', land_south: '', land_east: '', land_west: '' }
+  const emptyPropForm = {
+    name: '',
+    address: '',
+    electricity_details: '',
+    transformer_details: '',
+    water_connection_details: '',
+    land_north: '',
+    land_south: '',
+    land_east: '',
+    land_west: '',
+  }
   const emptyAptForm = {
-    name: '', total_flats: '', numbering_pattern: '', parking_slots: '', electricity_details: '', transformer_details: '', water_connection_details: '',
+    name: '', total_flats: '', numbering_pattern: '', parking_slots: '',
     floor_north: '', floor_south: '', floor_east: '', floor_west: '',
     floor_details: [{ floorName: '1', flatCount: '' }] as { floorName: string, flatCount: string }[],
     uploadFile: null as File | null
@@ -148,6 +158,9 @@ export function ProjectsPage() {
     setPropForm({
       name: prop.name,
       address: prop.address || '',
+      electricity_details: prop.electricity_details || '',
+      transformer_details: prop.transformer_details || '',
+      water_connection_details: prop.water_connection_details || '',
       land_north: prop.land_north || '',
       land_south: prop.land_south || '',
       land_east: prop.land_east || '',
@@ -193,9 +206,6 @@ export function ProjectsPage() {
       total_flats: String(apt.total_flats || ''),
       numbering_pattern: apt.numbering_pattern || '',
       parking_slots: String(apt.parking_slots || ''),
-      electricity_details: apt.electricity_details || '',
-      transformer_details: apt.transformer_details || '',
-      water_connection_details: apt.water_connection_details || '',
       floor_north: apt.floor_north || '',
       floor_south: apt.floor_south || '',
       floor_east: apt.floor_east || '',
@@ -214,9 +224,6 @@ export function ProjectsPage() {
         total_flats: aptForm.total_flats ? Number(aptForm.total_flats) : undefined,
         numbering_pattern: aptForm.numbering_pattern || undefined,
         parking_slots: aptForm.parking_slots ? Number(aptForm.parking_slots) : undefined,
-        electricity_details: aptForm.electricity_details || undefined,
-        transformer_details: aptForm.transformer_details || undefined,
-        water_connection_details: aptForm.water_connection_details || undefined,
         floor_north: aptForm.floor_north || undefined,
         floor_south: aptForm.floor_south || undefined,
         floor_east: aptForm.floor_east || undefined,
@@ -832,6 +839,13 @@ export function ProjectsPage() {
         <div className="space-y-4">
           <Input label="Property Name" value={propForm.name} onChange={(v) => setPropForm(s => ({...s, name: v}))} required placeholder="e.g. RG Residency" />
           <Input label="Address" value={propForm.address} onChange={(v) => setPropForm(s => ({...s, address: v}))} placeholder="Property Location" />
+          <div className="grid gap-4 md:grid-cols-2">
+            <Input label="Electricity Details" value={propForm.electricity_details} onChange={(v) => setPropForm(s => ({...s, electricity_details: v}))} placeholder="e.g. WBSEDCL" />
+            <Input label="Transformer Details" value={propForm.transformer_details} onChange={(v) => setPropForm(s => ({...s, transformer_details: v}))} placeholder="e.g. 500kVA" />
+            <div className="md:col-span-2">
+              <Input label="Water Connection Details" value={propForm.water_connection_details} onChange={(v) => setPropForm(s => ({...s, water_connection_details: v}))} placeholder="e.g. Municipal + borewell supply" />
+            </div>
+          </div>
           <div>
             <div className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">Land Boundaries</div>
             <div className="grid gap-3 md:grid-cols-2">
@@ -855,11 +869,6 @@ export function ProjectsPage() {
         <div className="grid gap-4 md:grid-cols-2">
           <Input label="Apartment Name" value={aptForm.name} onChange={(v) => setAptForm(s => ({...s, name: v}))} required placeholder="e.g. Block A" />
           <Input label="Total Parking Slots" value={aptForm.parking_slots} onChange={(v) => setAptForm(s => ({...s, parking_slots: v}))} type="number" placeholder="e.g. 60" />
-          <Input label="Electricity Details" value={aptForm.electricity_details} onChange={(v) => setAptForm(s => ({...s, electricity_details: v}))} placeholder="e.g. WBSEDCL" />
-          <Input label="Transformer Details" value={aptForm.transformer_details} onChange={(v) => setAptForm(s => ({...s, transformer_details: v}))} placeholder="e.g. 500kVA" />
-          <div className="md:col-span-2">
-            <Input label="Water Connection Details" value={aptForm.water_connection_details} onChange={(v) => setAptForm(s => ({...s, water_connection_details: v}))} placeholder="e.g. Municipal + borewell supply" />
-          </div>
           <div className="md:col-span-2">
             <div className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">Floor Boundaries for Demand Letter</div>
             <div className="grid gap-4 md:grid-cols-2">

@@ -15,11 +15,37 @@ export function ClientDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const toast = usePortalToast()
+  const splitPanAadhaar = (value: string) => {
+    const raw = value.trim()
+    if (!raw) return { pan: '', aadhaar: '' }
+
+    const panRegex = /[A-Z]{5}\d{4}[A-Z]/i
+    const aadhaarRegex = /\b\d{12}\b/
+
+    const panMatch = raw.match(panRegex)
+    const aadhaarMatch = raw.replace(/[-\s]/g, '').match(aadhaarRegex)
+
+    let pan = panMatch ? panMatch[0].toUpperCase() : ''
+    let aadhaar = aadhaarMatch ? aadhaarMatch[0] : ''
+
+    if (!pan && !aadhaar) {
+      const parts = raw.split(/[,/|]/).map((p) => p.trim()).filter(Boolean)
+      for (const part of parts) {
+        if (!pan && panRegex.test(part)) pan = part.toUpperCase()
+        if (!aadhaar && aadhaarRegex.test(part.replace(/[-\s]/g, ''))) aadhaar = part.replace(/[-\s]/g, '')
+      }
+      if (!pan && parts[0]) pan = parts[0]
+      if (!aadhaar && parts[1]) aadhaar = parts[1].replace(/[-\s]/g, '')
+    }
+
+    return { pan, aadhaar }
+  }
+
   const [client, setClient] = useState<Client | null>(null)
   const [loading, setLoading] = useState(true)
   const [editOpen, setEditOpen] = useState(false)
   const [form, setForm] = useState({
-    name: '', phone: '', email: '', address: '', purchase_date: '',
+    name: '', phone: '', email: '', pan: '', aadhaar: '', address: '', purchase_date: '',
   })
   const [saving, setSaving] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState(false)
@@ -44,10 +70,16 @@ export function ClientDetailPage() {
   const displayName = client.name || client.company_name || '—'
 
   const openEdit = () => {
+    let ids = { pan: client.pan_number || '', aadhaar: client.aadhaar_number || '' }
+    if (!ids.pan && !ids.aadhaar && client.pan_aadhaar) {
+      ids = splitPanAadhaar(client.pan_aadhaar)
+    }
     setForm({
       name: client.name || client.company_name || '',
       phone: client.phone || '',
       email: client.email || '',
+      pan: ids.pan,
+      aadhaar: ids.aadhaar,
       address: client.address || '',
       purchase_date: client.purchase_date ? client.purchase_date.split('T')[0] : '',
     })
@@ -73,6 +105,8 @@ export function ClientDetailPage() {
         name: form.name,
         phone: form.phone,
         email: form.email,
+        pan_number: form.pan || undefined,
+        aadhaar_number: form.aadhaar || undefined,
         address: form.address,
         purchase_date: form.purchase_date || undefined,
         flat_id: client.flat_id,
@@ -85,6 +119,11 @@ export function ClientDetailPage() {
     } finally {
       setSaving(false)
     }
+  }
+
+  const scrollToProperty = () => {
+    const el = document.getElementById('client-property')
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
 
@@ -113,6 +152,7 @@ export function ClientDetailPage() {
             {!client.apartment_name && !client.flat_number && 'No property assigned'}
           </div>
         </div>
+        <PortalButton variant="outline" onClick={scrollToProperty}><Building2 className="h-4 w-4" /> Client Property</PortalButton>
         <PortalButton variant="outline" onClick={() => navigate(`/portal/work-projection/${client.id}`)}><HardHat className="h-4 w-4" /> Work Projection</PortalButton>
         <PortalButton variant="outline" onClick={openEdit}><Pencil className="h-4 w-4" /> Edit</PortalButton>
         <PortalButton variant="danger" onClick={() => setDeleteConfirm(true)}><Trash2 className="h-4 w-4" /></PortalButton>
@@ -161,7 +201,8 @@ export function ClientDetailPage() {
       </PortalCard>
 
       {/* Property Details */}
-      <PortalCard>
+      <div id="client-property">
+        <PortalCard>
         <div className="flex items-center gap-2 mb-4">
           <Building2 className="h-4 w-4 text-orange-500" />
           <span className="text-lg font-extrabold text-slate-900">Property Details</span>
@@ -174,7 +215,8 @@ export function ClientDetailPage() {
           <div><span className="text-slate-400 font-semibold">SBU Area:</span> <span className="text-slate-700">{client.sbu_area ? `${client.sbu_area} sqft` : '—'}</span></div>
           <div><span className="text-slate-400 font-semibold">Total Amount:</span> <span className="text-slate-700 font-bold">{inr(totalAmount)}</span></div>
         </div>
-      </PortalCard>
+        </PortalCard>
+      </div>
 
       {/* Infrastructure Details */}
       <PortalCard>
@@ -204,6 +246,8 @@ export function ClientDetailPage() {
           <Input label="Name" value={form.name} onChange={(v) => setForm((s) => ({ ...s, name: v }))} required />
           <Input label="Phone" value={form.phone} onChange={(v) => setForm((s) => ({ ...s, phone: v }))} />
           <Input label="Email" value={form.email} onChange={(v) => setForm((s) => ({ ...s, email: v }))} type="email" />
+          <Input label="PAN" value={form.pan} onChange={(v) => setForm((s) => ({ ...s, pan: v }))} />
+          <Input label="Aadhaar" value={form.aadhaar} onChange={(v) => setForm((s) => ({ ...s, aadhaar: v }))} />
           <Input label="Purchase Date" value={form.purchase_date} onChange={(v) => setForm((s) => ({ ...s, purchase_date: v }))} type="date" />
         </div>
         <div className="mt-4">

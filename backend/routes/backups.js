@@ -104,7 +104,8 @@ const columns = {
     { key: 'name', label: 'Client Name' },
     { key: 'phone', label: 'Phone' },
     { key: 'email', label: 'Email' },
-    { key: 'pan_aadhaar', label: 'PAN/Aadhaar' },
+    { key: 'pan_number', label: 'PAN' },
+    { key: 'aadhaar_number', label: 'Aadhaar' },
     { key: 'address', label: 'Address' },
     { key: 'purchase_date', label: 'Purchase Date' },
     { key: 'property_name', label: 'Property' },
@@ -194,7 +195,13 @@ async function getBackupData({ fromDate, toDate }) {
 
   const [clients] = await pool.query(`
     SELECT
-      c.unique_client_id, c.name, c.phone, c.email, c.pan_aadhaar, c.address,
+      c.unique_client_id,
+      c.name,
+      c.phone,
+      c.email,
+      COALESCE(c.pan_number, NULLIF(SUBSTRING_INDEX(c.pan_aadhaar, ' / ', 1), '')) AS pan_number,
+      COALESCE(c.aadhaar_number, NULLIF(SUBSTRING_INDEX(c.pan_aadhaar, ' / ', -1), '')) AS aadhaar_number,
+      c.address,
       DATE_FORMAT(c.purchase_date, '%Y-%m-%d') AS purchase_date,
       p.name AS property_name, a.name AS apartment_name, t.name AS tower_name,
       f.flat_number, f.floor, f.sbu_area, COALESCE(f.total_amount, 0) AS flat_value,

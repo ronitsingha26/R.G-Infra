@@ -15,7 +15,10 @@ ALTER TABLE users
   ADD COLUMN last_login_at DATETIME;
 
 ALTER TABLE properties
-  ADD COLUMN land_north VARCHAR(500) NULL AFTER address,
+  ADD COLUMN electricity_details VARCHAR(200) NULL AFTER address,
+  ADD COLUMN transformer_details VARCHAR(200) NULL AFTER electricity_details,
+  ADD COLUMN water_connection_details TEXT NULL AFTER transformer_details,
+  ADD COLUMN land_north VARCHAR(500) NULL AFTER water_connection_details,
   ADD COLUMN land_south VARCHAR(500) NULL AFTER land_north,
   ADD COLUMN land_east VARCHAR(500) NULL AFTER land_south,
   ADD COLUMN land_west VARCHAR(500) NULL AFTER land_east;
@@ -50,6 +53,8 @@ ALTER TABLE apartments
 
 ALTER TABLE clients
   ADD COLUMN pan_aadhaar VARCHAR(50) NULL AFTER address,
+  ADD COLUMN pan_number VARCHAR(20) NULL AFTER pan_aadhaar,
+  ADD COLUMN aadhaar_number VARCHAR(20) NULL AFTER pan_number,
   ADD INDEX idx_clients_flat (flat_id),
   ADD INDEX idx_clients_phone (phone),
   ADD INDEX idx_clients_email (email);

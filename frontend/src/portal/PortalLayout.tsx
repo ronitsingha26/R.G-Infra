@@ -1,4 +1,4 @@
-import { Suspense, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { Outlet } from 'react-router-dom'
 import { PortalSidebar } from './PortalSidebar'
 import { PortalTopbar } from './PortalTopbar'
@@ -46,6 +46,24 @@ function RealTimeAlerts() {
 
 export function PortalLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+
+  useEffect(() => {
+    const handleWheel = (event: WheelEvent) => {
+      const target = event.target
+      if (!(target instanceof HTMLElement)) return
+
+      const input = target.closest('input[type="number"]') as HTMLInputElement | null
+      if (!input) return
+
+      if (document.activeElement === input) {
+        input.blur()
+      }
+    }
+
+    document.addEventListener('wheel', handleWheel, { passive: true })
+    return () => document.removeEventListener('wheel', handleWheel)
+  }, [])
+
   return (
     <PortalStoreProvider>
       <PortalToastProvider>

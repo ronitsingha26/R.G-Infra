@@ -78,7 +78,8 @@ export function ProjectsPage() {
     name: '', total_flats: '', numbering_pattern: '', parking_slots: '',
     floor_north: '', floor_south: '', floor_east: '', floor_west: '',
     floor_details: [{ floorName: '1', flatCount: '' }] as { floorName: string, flatCount: string }[],
-    uploadFile: null as File | null
+    uploadFile: null as File | null,
+    creationMode: 'select' as 'select' | 'manual' | 'excel'
   }
   const [propForm, setPropForm] = useState(emptyPropForm)
   const [aptForm, setAptForm] = useState({
@@ -210,41 +211,49 @@ export function ProjectsPage() {
       floor_south: apt.floor_south || '',
       floor_east: apt.floor_east || '',
       floor_west: apt.floor_west || '',
+      creationMode: 'manual' as const,
+      floor_details: [],
+      uploadFile: null
     })
     setAptModal({ open: true, propId: apt.property_id || 0, editing: apt })
   }
 
   const handleSaveApt = async () => {
-    if (!aptForm.name.trim()) return
+    if (aptForm.creationMode !== 'excel' && !aptForm.name.trim()) return
+    if (aptForm.creationMode === 'excel' && !aptForm.uploadFile) return
+
     setSaving(true)
     try {
-      const payload = {
-        name: aptForm.name,
-        property_id: aptModal.propId || undefined,
-        total_flats: aptForm.total_flats ? Number(aptForm.total_flats) : undefined,
-        numbering_pattern: aptForm.numbering_pattern || undefined,
-        parking_slots: aptForm.parking_slots ? Number(aptForm.parking_slots) : undefined,
-        floor_north: aptForm.floor_north || undefined,
-        floor_south: aptForm.floor_south || undefined,
-        floor_east: aptForm.floor_east || undefined,
-        floor_west: aptForm.floor_west || undefined,
-        floor_details: aptForm.floor_details?.filter(f => f.floorName && f.flatCount) || [],
-      } as any
-
-      if (aptModal.editing) {
-        await api.updateApartment(aptModal.editing.id, payload)
-        toast.push({ tone: 'success', title: 'Apartment updated' })
+      if (!aptModal.editing && aptForm.creationMode === 'excel') {
+        // Bulk Upload Flow
+        await api.bulkUploadFlatDetails(aptModal.propId, aptForm.uploadFile!, aptForm.parking_slots)
+        // Optionally upload booking status if there's a sheet for it (this endpoint now also handles auto-creation/lookup by property_id)
+        try {
+          await api.bulkUploadBookingStatus(aptModal.propId, aptForm.uploadFile!)
+        } catch (e) {
+          // Ignore if no booking status sheet is found or it fails
+        }
+        toast.push({ tone: 'success', title: 'Blocks and Flats uploaded successfully' })
       } else {
-        const apt = await api.createApartment(payload)
-        if (aptForm.uploadFile) {
-          try {
-            await api.bulkUploadFlatDetails(apt.id, aptForm.uploadFile)
-            await api.bulkUploadBookingStatus(apt.id, aptForm.uploadFile)
-            toast.push({ tone: 'success', title: 'Apartment & Flats uploaded successfully' })
-          } catch (uploadErr) {
-            toast.push({ tone: 'error', title: uploadErr instanceof Error ? uploadErr.message : 'Apartment created, but flat upload failed' })
-          }
+        // Manual Flow
+        const payload = {
+          name: aptForm.name,
+          property_id: aptModal.propId || undefined,
+          total_flats: aptForm.total_flats ? Number(aptForm.total_flats) : undefined,
+          numbering_pattern: aptForm.numbering_pattern || undefined,
+          parking_slots: aptForm.parking_slots ? Number(aptForm.parking_slots) : undefined,
+          floor_north: aptForm.floor_north || undefined,
+          floor_south: aptForm.floor_south || undefined,
+          floor_east: aptForm.floor_east || undefined,
+          floor_west: aptForm.floor_west || undefined,
+          floor_details: aptForm.floor_details?.filter(f => f.floorName && f.flatCount) || [],
+        } as any
+
+        if (aptModal.editing) {
+          await api.updateApartment(aptModal.editing.id, payload)
+          toast.push({ tone: 'success', title: 'Apartment updated' })
         } else {
+          await api.createApartment(payload)
           toast.push({ tone: 'success', title: 'Apartment created successfully' })
         }
       }
@@ -865,50 +874,122 @@ export function ProjectsPage() {
       </Modal>
 
       {/* ─── Add/Edit Apartment Modal ─── */}
-      <Modal open={aptModal.open} onClose={() => setAptModal({ open: false, propId: 0 })} title={aptModal.editing ? 'Edit Apartment' : 'Add New Apartment'} wide closeOnBackdropClick={false}>
-        <div className="grid gap-4 md:grid-cols-2">
-          <Input label="Apartment Name" value={aptForm.name} onChange={(v) => setAptForm(s => ({...s, name: v}))} required placeholder="e.g. Block A" />
-          <Input label="Total Parking Slots" value={aptForm.parking_slots} onChange={(v) => setAptForm(s => ({...s, parking_slots: v}))} type="number" placeholder="e.g. 60" />
-          <div className="md:col-span-2">
-            <div className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">Floor Boundaries for Demand Letter</div>
-            <div className="grid gap-4 md:grid-cols-2">
-              <Input label="North" value={aptForm.floor_north} onChange={(v) => setAptForm(s => ({...s, floor_north: v}))} placeholder="e.g. Flat No. 903" />
-              <Input label="South" value={aptForm.floor_south} onChange={(v) => setAptForm(s => ({...s, floor_south: v}))} placeholder="e.g. Side Setback" />
-              <Input label="East" value={aptForm.floor_east} onChange={(v) => setAptForm(s => ({...s, floor_east: v}))} placeholder="e.g. Rear Setback" />
-              <Input label="West" value={aptForm.floor_west} onChange={(v) => setAptForm(s => ({...s, floor_west: v}))} placeholder="e.g. Pool and Garden area" />
-            </div>
-          </div>
-        </div>
-        
-        {!aptModal.editing && (
-          <div className="mt-6">
-            <div className="text-xs font-bold uppercase tracking-wide text-slate-500 mb-2">Upload Flats Data (Excel)</div>
-            <div className="space-y-2 bg-slate-50 p-4 rounded-xl border border-slate-200">
-              <input 
-                type="file" 
-                accept=".xlsx,.xls,.csv"
-                onChange={(e) => {
-                  const file = e.target.files?.[0]
-                  if (file) setAptForm(s => ({ ...s, uploadFile: file }))
-                }}
-                className="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100"
-              />
-              <div className="text-xs text-slate-500 mt-2">
-                Upload an Excel file containing flats data. Columns expected: SL. NO., FLAT NO, TYPE, FLOOR, SUPER BUILT UP AREA, BOOKING STATUS, CUSTOMER NAME.
+      <Modal 
+        open={aptModal.open} 
+        onClose={() => setAptModal({ open: false, propId: 0 })} 
+        title={aptModal.editing ? 'Edit Apartment' : aptForm.creationMode === 'select' ? 'Choose Creation Method' : 'Add New Apartment'} 
+        wide 
+        closeOnBackdropClick={false}
+      >
+        {aptForm.creationMode === 'select' && !aptModal.editing ? (
+          <div className="grid gap-4 sm:grid-cols-2 py-4">
+            <button 
+              type="button"
+              onClick={() => setAptForm(s => ({ ...s, creationMode: 'manual' }))}
+              className="flex flex-col items-center justify-center gap-3 p-6 rounded-2xl border-2 border-slate-200 hover:border-orange-500 hover:bg-orange-50 transition-all text-center"
+            >
+              <div className="h-12 w-12 rounded-full bg-orange-100 flex items-center justify-center">
+                <Edit className="h-6 w-6 text-orange-600" />
               </div>
-            </div>
+              <div>
+                <div className="font-bold text-slate-900 text-lg">Manual Entry</div>
+                <div className="text-sm text-slate-500 mt-1">Create the block now and add flat details manually later.</div>
+              </div>
+            </button>
+            <button 
+              type="button"
+              onClick={() => setAptForm(s => ({ ...s, creationMode: 'excel' }))}
+              className="flex flex-col items-center justify-center gap-3 p-6 rounded-2xl border-2 border-slate-200 hover:border-blue-500 hover:bg-blue-50 transition-all text-center"
+            >
+              <div className="h-12 w-12 rounded-full bg-blue-100 flex items-center justify-center">
+                <FileSpreadsheet className="h-6 w-6 text-blue-600" />
+              </div>
+              <div>
+                <div className="font-bold text-slate-900 text-lg">Bulk Excel Upload</div>
+                <div className="text-sm text-slate-500 mt-1">Upload flats data using the standard Excel template.</div>
+              </div>
+            </button>
           </div>
-        )}
+        ) : (
+          <>
+            {/* Show Back Button if in create mode */}
+            {!aptModal.editing && (
+              <button 
+                onClick={() => setAptForm(s => ({ ...s, creationMode: 'select' }))} 
+                className="mb-4 text-sm font-bold text-slate-500 hover:text-slate-800 flex items-center gap-1 transition-colors"
+              >
+                ← Back to options
+              </button>
+            )}
 
-        <div className="mt-3 text-xs text-slate-500">
-          Parking slots default to roughly 2 per flat so you can keep one primary slot per flat and still have extra paid parking available.
-        </div>
-        <div className="mt-5 flex justify-end gap-2">
-          <PortalButton variant="outline" onClick={() => setAptModal({ open: false, propId: 0 })}>Cancel</PortalButton>
-          <PortalButton onClick={handleSaveApt} disabled={saving || !aptForm.name.trim()}>
-            {saving ? 'Saving...' : aptModal.editing ? 'Update' : 'Add Apartment'}
-          </PortalButton>
-        </div>
+            {/* Show manual inputs only if not in excel mode, OR if editing */}
+            {(!(!aptModal.editing && aptForm.creationMode === 'excel')) && (
+              <div className="grid gap-4 md:grid-cols-2">
+                <Input label="Apartment/Block Name" value={aptForm.name} onChange={(v) => setAptForm(s => ({...s, name: v}))} required placeholder="e.g. Block A" />
+                <Input label="Total Parking Slots" value={aptForm.parking_slots} onChange={(v) => setAptForm(s => ({...s, parking_slots: v}))} type="number" placeholder="e.g. 60" />
+                
+                <div className="md:col-span-2">
+                  <div className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">Floor Boundaries for Demand Letter</div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <Input label="North" value={aptForm.floor_north} onChange={(v) => setAptForm(s => ({...s, floor_north: v}))} placeholder="e.g. Flat No. 903" />
+                    <Input label="South" value={aptForm.floor_south} onChange={(v) => setAptForm(s => ({...s, floor_south: v}))} placeholder="e.g. Side Setback" />
+                    <Input label="East" value={aptForm.floor_east} onChange={(v) => setAptForm(s => ({...s, floor_east: v}))} placeholder="e.g. Rear Setback" />
+                    <Input label="West" value={aptForm.floor_west} onChange={(v) => setAptForm(s => ({...s, floor_west: v}))} placeholder="e.g. Pool and Garden area" />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Show bulk upload inputs if in excel mode */}
+            {!aptModal.editing && aptForm.creationMode === 'excel' && (
+              <div className="space-y-6">
+                <div>
+                  <Input 
+                    label="Default Parking Slots per Block (Optional)" 
+                    value={aptForm.parking_slots} 
+                    onChange={(v) => setAptForm(s => ({...s, parking_slots: v}))} 
+                    type="number" 
+                    placeholder="e.g. 60" 
+                  />
+                  <div className="mt-2 text-xs text-slate-500">
+                    This number of parking slots will be assigned to any newly created block.
+                  </div>
+                </div>
+
+                <div>
+                  <div className="text-xs font-bold uppercase tracking-wide text-slate-500 mb-2">Upload Flats Data (Excel)</div>
+                  <div className="space-y-2 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                    <input 
+                      type="file" 
+                      accept=".xlsx,.xls,.csv"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0]
+                        if (file) setAptForm(s => ({ ...s, uploadFile: file }))
+                      }}
+                      className="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100"
+                    />
+                    <div className="text-xs text-slate-500 mt-2">
+                      Upload an Excel file containing flats data. Blocks will be auto-assigned in order as Block A, Block B, Block C, and continue alphabetically for more sheets.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {(!(!aptModal.editing && aptForm.creationMode === 'excel')) && (
+              <div className="mt-3 text-xs text-slate-500">
+                Parking slots default to roughly 2 per flat so you can keep one primary slot per flat and still have extra paid parking available.
+              </div>
+            )}
+            
+            <div className="mt-5 flex justify-end gap-2">
+              <PortalButton variant="outline" onClick={() => setAptModal({ open: false, propId: 0 })}>Cancel</PortalButton>
+              <PortalButton onClick={handleSaveApt} disabled={saving || (aptForm.creationMode !== 'excel' && !aptForm.name.trim()) || (!aptModal.editing && aptForm.creationMode === 'excel' && !aptForm.uploadFile)}>
+                {saving ? 'Saving...' : aptModal.editing ? 'Update' : (aptForm.creationMode === 'excel' ? 'Upload Flats' : 'Add Apartment')}
+              </PortalButton>
+            </div>
+          </>
+        )}
       </Modal>
 
       {/* ─── Add/Edit Flat Modal ─── */}

@@ -15,7 +15,10 @@ const BANK = {
 };
 
 function inr(amount) {
-  return `Rs. ${Number(amount || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}/-`;
+  const num = Number(amount || 0);
+  const isInteger = Number.isInteger(num);
+  const decimals = isInteger ? 0 : 2;
+  return `Rs. ${num.toLocaleString('en-IN', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}/-`;
 }
 
 function pct(value) {

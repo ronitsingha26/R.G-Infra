@@ -1,5 +1,6 @@
 import { Download, FileText, Plus, Search, Trash2 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { api, type DueInfo, type Payment, type PaymentInvoice } from '../api'
 import { usePortalStore } from '../store'
 import { usePortalToast } from '../toast'
@@ -8,12 +9,14 @@ import { EmptyState, inr, Input, Modal, PortalButton, PortalCard, Textarea } fro
 export function PaymentsPage() {
   const store = usePortalStore()
   const toast = usePortalToast()
+  const [searchParams] = useSearchParams()
   const [search, setSearch] = useState('')
   const [payModal, setPayModal] = useState(false)
   const [clientSearch, setClientSearch] = useState('')
   const [saving, setSaving] = useState(false)
   const [dueInfo, setDueInfo] = useState<DueInfo | null>(null)
   const [dueLoading, setDueLoading] = useState(false)
+  const [prefilled, setPrefilled] = useState(false)
   const [payForm, setPayForm] = useState({
     client_id: '',
     percentage: '',
@@ -54,34 +57,48 @@ export function PaymentsPage() {
     return `${client.name || client.company_name || 'Client'} • ${client.property_name ? `${client.property_name} - ` : ''}${client.apartment_name ? `${client.apartment_name} - Flat ${client.flat_number}` : 'No Flat Assigned'}`
   }
 
+  const getSelectedClient = () => store.clients.find(c => c.id === Number(payForm.client_id))
+  const getTotalFlatAmount = () => Number(dueInfo?.total_flat_amount || getSelectedClient()?.total_amount || 0)
+  const getGstPercent = () => Number(dueInfo?.gst_percent || getSelectedClient()?.gst_percent || 0)
+
   // When percentage changes:
   const handlePercentageChange = (pct: string) => {
-    const p = parseFloat(pct);
+    const p = parseFloat(pct)
     if (isNaN(p) || !payForm.client_id) {
-       setPayForm(s => ({ ...s, percentage: pct, amount: '', amount_includes_gst: false }));
-       return;
+      setPayForm(s => ({ ...s, percentage: pct, amount: '' }))
+      return
     }
-    const client = store.clients.find(c => c.id === Number(payForm.client_id));
-    if (client) {
-       const amt = Math.round((Number(client.total_amount || 0) * p) / 100);
-       setPayForm(s => ({ ...s, percentage: pct, amount: String(amt), amount_includes_gst: false }));
+
+    const totalAmount = getTotalFlatAmount()
+    const gstPercent = getGstPercent()
+    if (totalAmount > 0) {
+      const base = (totalAmount * p) / 100
+      const amt = payForm.amount_includes_gst ? base * (1 + (gstPercent / 100)) : base
+      setPayForm(s => ({ ...s, percentage: pct, amount: String(Math.round(amt)) }))
     } else {
-       setPayForm(s => ({ ...s, percentage: pct, amount: '', amount_includes_gst: false }));
+      setPayForm(s => ({ ...s, percentage: pct, amount: '' }))
     }
   }
 
   // Handle client change
-  const handleClientChange = async (clientId: string) => {
-    setPayForm(s => ({ ...s, client_id: clientId }));
+  const handleClientChange = async (clientId: string, prefill?: { amount?: string; gstInclusive?: boolean }) => {
     setClientSearch(getClientLabel(clientId));
     setDueInfo(null);
-    if (payForm.percentage) {
+
+    if (prefill?.amount) {
+      setPayForm(s => ({ ...s, client_id: clientId, amount: prefill.amount || '', amount_includes_gst: prefill.gstInclusive || false }));
+    } else if (payForm.percentage) {
       const client = store.clients.find(c => c.id === Number(clientId));
       if (client) {
         const amt = Math.round((Number(client.total_amount || 0) * parseFloat(payForm.percentage)) / 100);
         setPayForm(s => ({ ...s, client_id: clientId, amount: String(amt), amount_includes_gst: false }));
+      } else {
+        setPayForm(s => ({ ...s, client_id: clientId, amount: '', amount_includes_gst: false }));
       }
+    } else {
+      setPayForm(s => ({ ...s, client_id: clientId }));
     }
+
     if (!clientId) return;
 
     setDueLoading(true);
@@ -94,6 +111,19 @@ export function PaymentsPage() {
       setDueLoading(false);
     }
   }
+
+  useEffect(() => {
+    const clientId = searchParams.get('client_id')
+    if (!clientId || prefilled) return
+    const amount = searchParams.get('amount') || undefined
+    const gstInclusive = searchParams.get('gst_inclusive') === 'true'
+    setPayModal(true)
+    if (gstInclusive && amount) {
+      setPayForm(s => ({ ...s, amount_includes_gst: true }))
+    }
+    handleClientChange(clientId, amount ? { amount, gstInclusive } : undefined)
+    setPrefilled(true)
+  }, [handleClientChange, prefilled, searchParams])
 
   const handleAddPayment = async () => {
     if (!payForm.client_id || !payForm.amount) return;
@@ -160,6 +190,7 @@ export function PaymentsPage() {
   })
 
   const total = filtered.reduce((s, p) => s + Number(p.amount || 0), 0)
+  const totalWithGst = filtered.reduce((s, p) => s + Number(p.grand_total || (Number(p.amount || 0) + Number(p.gst_amount || 0))), 0)
 
   return (
     <div className="space-y-6">
@@ -167,7 +198,7 @@ export function PaymentsPage() {
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <div className="text-2xl font-extrabold text-slate-900">Payments</div>
-            <div className="text-sm text-slate-500">{store.payments.length} total payments • Total: {inr(total)}</div>
+            <div className="text-sm text-slate-500">{store.payments.length} total payments • Base: {inr(total)} • With GST: {inr(totalWithGst)}</div>
           </div>
           <div className="flex items-center gap-3">
             <div className="relative">
@@ -185,16 +216,23 @@ export function PaymentsPage() {
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <table className="w-full text-left text-sm">
             <thead className="bg-slate-50 text-xs font-bold text-slate-500 uppercase tracking-wider">
-              <tr><th className="px-5 py-3">Date</th><th className="px-5 py-3">Client</th><th className="px-5 py-3">Project</th><th className="px-5 py-3">Mode</th><th className="px-5 py-3">Reference</th><th className="px-5 py-3 text-right">Amount</th><th className="px-5 py-3">Invoice</th><th className="px-5 py-3"></th></tr>
+              <tr><th className="px-5 py-3">Date & Time</th><th className="px-5 py-3">Client</th><th className="px-5 py-3">Project</th><th className="px-5 py-3">Mode</th><th className="px-5 py-3">Reference</th><th className="px-5 py-3 text-right">Base Amount</th><th className="px-5 py-3 text-right">GST</th><th className="px-5 py-3 text-right">Total (incl. GST)</th><th className="px-5 py-3">Invoice</th><th className="px-5 py-3"></th></tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">{filtered.map(p => (
+            <tbody className="divide-y divide-slate-100">{filtered.map(p => {
+              const grandTotal = Number(p.grand_total || (Number(p.amount || 0) + Number(p.gst_amount || 0)))
+              return (
               <tr key={p.id} className="text-slate-700">
-                <td className="px-5 py-4">{p.payment_date ? new Date(p.payment_date).toLocaleDateString('en-IN') : '—'}</td>
+                <td className="px-5 py-4">
+                  <div>{p.payment_date ? new Date(p.payment_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</div>
+                  <div className="text-[10px] text-slate-400 mt-0.5">{p.created_at ? new Date(p.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }) : ''}</div>
+                </td>
                 <td className="px-5 py-4 font-semibold">{p.client_name || '—'}</td>
                 <td className="px-5 py-4">{p.project_name || '—'}</td>
                 <td className="px-5 py-4">{p.payment_mode || '—'}</td>
                 <td className="px-5 py-4 text-xs">{p.reference_no || '—'}</td>
-                <td className="px-5 py-4 text-right font-bold text-emerald-600">{inr(p.amount)}</td>
+                <td className="px-5 py-4 text-right font-bold text-slate-700">{inr(p.amount)}</td>
+                <td className="px-5 py-4 text-right text-xs text-orange-600 font-semibold">{Number(p.gst_amount || 0) > 0 ? inr(p.gst_amount) : '—'}</td>
+                <td className="px-5 py-4 text-right font-bold text-emerald-600">{inr(grandTotal)}</td>
                 <td className="px-5 py-4">
                   <div className="flex flex-wrap items-center gap-2">
                     <PortalButton
@@ -233,7 +271,7 @@ export function PaymentsPage() {
                   </button>
                 </td>
               </tr>
-            ))}</tbody>
+            )})}</tbody>
           </table>
         </div>
       )}
@@ -322,7 +360,7 @@ export function PaymentsPage() {
           <Input
             label="Payment Amount (₹)"
             value={payForm.amount}
-            onChange={(v) => setPayForm(s => ({ ...s, amount: v, percentage: '', amount_includes_gst: false }))}
+            onChange={(v) => setPayForm(s => ({ ...s, amount: v, percentage: '' }))}
             type="number"
             required
             placeholder="e.g. 150000"
@@ -332,7 +370,20 @@ export function PaymentsPage() {
               <input
                 type="checkbox"
                 checked={payForm.amount_includes_gst}
-                onChange={(e) => setPayForm(s => ({ ...s, amount_includes_gst: e.target.checked, percentage: e.target.checked ? '' : s.percentage }))}
+                onChange={(e) => {
+                  const checked = e.target.checked
+                  const totalAmount = getTotalFlatAmount()
+                  const gstPercent = getGstPercent()
+                  const pct = parseFloat(payForm.percentage || '')
+
+                  if (!Number.isNaN(pct) && totalAmount > 0) {
+                    const base = (totalAmount * pct) / 100
+                    const amt = checked ? base * (1 + (gstPercent / 100)) : base
+                    setPayForm(s => ({ ...s, amount_includes_gst: checked, amount: String(Math.round(amt)) }))
+                  } else {
+                    setPayForm(s => ({ ...s, amount_includes_gst: checked }))
+                  }
+                }}
                 className="h-4 w-4 rounded border-slate-300 text-orange-500 focus:ring-orange-400"
               />
               Amount entered includes GST
@@ -340,10 +391,21 @@ export function PaymentsPage() {
             {dueInfo && Number(dueInfo.total_payable || 0) > 0 && (
               <button
                 type="button"
-                onClick={() => setPayForm(s => ({ ...s, amount: String(Math.round(Number(dueInfo.total_payable || 0))), percentage: '', amount_includes_gst: true }))}
+                onClick={() => {
+                  const totalPayable = Number(dueInfo.total_payable || 0)
+                  const totalFlatAmount = Number(dueInfo.total_flat_amount || 0)
+                  const currentBase = Number(dueInfo.current_due || dueInfo.current_stage_due || dueInfo.combined_due || 0)
+                  const pct = totalFlatAmount > 0 ? (currentBase / totalFlatAmount) * 100 : 0
+                  setPayForm(s => ({
+                    ...s,
+                    amount: String(Math.round(totalPayable)),
+                    percentage: pct ? pct.toFixed(2) : '',
+                    amount_includes_gst: true,
+                  }))
+                }}
                 className="mt-2 text-xs font-bold text-orange-600 hover:text-orange-700"
               >
-                Use payable with GST: {inr(dueInfo.total_payable)}
+                Pay current due (GST included): {inr(dueInfo.total_payable)}
               </button>
             )}
           </div>

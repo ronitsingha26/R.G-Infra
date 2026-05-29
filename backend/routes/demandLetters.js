@@ -89,7 +89,7 @@ async function getDemandPaymentContext(clientId, fallbackPaidAmount = null) {
   }
 
   const [[paidRow]] = await pool.query(
-    'SELECT COALESCE(SUM(amount), 0) AS total_paid FROM client_payments WHERE client_id = ?',
+    'SELECT COALESCE(SUM(amount), 0) AS total_paid, COALESCE(SUM(gst_amount), 0) AS total_paid_gst FROM client_payments WHERE client_id = ?',
     [clientId]
   );
   const [[clientRow]] = await pool.query(
@@ -103,10 +103,12 @@ async function getDemandPaymentContext(clientId, fallbackPaidAmount = null) {
   );
 
   const actualPaid = Number(paidRow?.total_paid || 0);
+  const actualPaidGst = Number(paidRow?.total_paid_gst || 0);
   const totalAmount = Number(clientRow?.total_amount || 0);
   const paidAmount = fallbackPaidAmount !== null && fallbackPaidAmount !== undefined && Number(fallbackPaidAmount) > 0
     ? Number(fallbackPaidAmount)
     : actualPaid;
+  const paidAmountWithGst = paidAmount + actualPaidGst;
 
   const [scheduleRows] = await pool.query(
     `SELECT *
@@ -118,22 +120,27 @@ async function getDemandPaymentContext(clientId, fallbackPaidAmount = null) {
   );
   const currentSchedule = scheduleRows[0] || null;
   const nextSchedule = scheduleRows[1] || null;
-  const dueAmount = Number(dueInfo?.current_due ?? dueInfo?.current_stage_due ?? Math.max(0, totalAmount - paidAmount));
+  const baseDueAmount = Number(dueInfo?.current_due ?? dueInfo?.current_stage_due ?? Math.max(0, totalAmount - paidAmount));
   const gstPercent = Number(clientRow?.flat_gst_percent || dueInfo?.gst_percent || 0);
-  const gstAmount = Number(dueInfo?.gst_amount ?? (dueAmount * gstPercent / 100));
+  const currentStageDue = Number(currentSchedule?.due_amount || dueInfo?.current_stage_due || baseDueAmount || 0);
+  const nextStageAmount = Number(nextSchedule?.amount || dueInfo?.next_stage_amount || 0);
+  const hasCarryOver = currentSchedule?.status === 'partial' && nextStageAmount > 0;
+  const dueAmount = hasCarryOver ? currentStageDue + nextStageAmount : baseDueAmount;
+  const gstAmount = Number((dueAmount * gstPercent) / 100);
 
   return {
     dueInfo,
     paidAmount,
-    stageAmount: Number(currentSchedule?.amount || dueInfo?.current_stage_due || Math.max(0, totalAmount - paidAmount)),
+    paidAmountWithGst,
+    stageAmount: hasCarryOver ? dueAmount : Number(currentSchedule?.amount || dueInfo?.current_stage_due || Math.max(0, totalAmount - paidAmount)),
     dueAmount,
-    duePercentage: currentSchedule?.percentage || (totalAmount > 0 && dueInfo?.current_stage_due ? (Number(dueInfo.current_stage_due) / totalAmount) * 100 : null),
+    duePercentage: totalAmount > 0 ? (dueAmount / totalAmount) * 100 : null,
     currentStageName: currentSchedule?.stage_name || dueInfo?.current_stage || null,
     currentDueDate: currentSchedule?.due_date || dueInfo?.current_due_date || null,
-    nextStageName: nextSchedule?.stage_name || dueInfo?.next_stage || null,
-    nextStageAmount: Number(nextSchedule?.amount || dueInfo?.next_stage_amount || 0),
-    nextStagePercentage: nextSchedule?.percentage || (totalAmount > 0 && dueInfo?.next_stage_amount ? (Number(dueInfo.next_stage_amount) / totalAmount) * 100 : null),
-    nextDueDate: nextSchedule?.due_date || dueInfo?.next_due_date || null,
+    nextStageName: hasCarryOver ? null : (nextSchedule?.stage_name || dueInfo?.next_stage || null),
+    nextStageAmount: hasCarryOver ? 0 : Number(nextSchedule?.amount || dueInfo?.next_stage_amount || 0),
+    nextStagePercentage: hasCarryOver ? null : (nextSchedule?.percentage || (totalAmount > 0 && dueInfo?.next_stage_amount ? (Number(dueInfo.next_stage_amount) / totalAmount) * 100 : null)),
+    nextDueDate: hasCarryOver ? null : (nextSchedule?.due_date || dueInfo?.next_due_date || null),
     gstPercent,
     gstAmount,
     totalPayable: dueAmount + gstAmount,
@@ -176,6 +183,7 @@ router.post('/generate', verifyToken, async (req, res) => {
       totalAmount,
       stageAmount: paymentContext.stageAmount,
       paidAmount,
+      paidAmountWithGst: paymentContext.paidAmountWithGst,
       dueAmount,
       gstPercent: paymentContext.gstPercent,
       gstAmount,
@@ -517,6 +525,7 @@ router.post('/send-enhanced-reminder', verifyToken, async (req, res) => {
         totalAmount,
         stageAmount: paymentContext.stageAmount,
         paidAmount: totalPaid,
+        paidAmountWithGst: paymentContext.paidAmountWithGst,
         dueAmount,
         gstPercent,
         gstAmount,
@@ -636,6 +645,35 @@ router.post('/send-enhanced-reminder', verifyToken, async (req, res) => {
       status: emailResult.success ? 'sent' : 'failed',
       error_message: emailResult.success ? null : emailResult.reason,
     });
+
+    // ─── LOG IN REMINDER LOGS (for Reminder History tab) ───
+    try {
+      const [schedFirst] = await pool.query(
+        `SELECT * FROM payment_schedules WHERE client_id = ? AND status != 'paid' ORDER BY stage_order ASC LIMIT 1`,
+        [client_id]
+      );
+      await pool.query(
+        `INSERT INTO reminder_logs
+         (client_id, flat_id, schedule_id, stage_name, due_date, combined_due, current_stage_due,
+          email_sent, email_status, whatsapp_initiated, trigger_type, demand_letter_id, error_message)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 'manual', ?, ?)`,
+        [
+          client_id,
+          client.flat_id || null,
+          schedFirst[0]?.id || null,
+          paymentContext.currentStageName || schedFirst[0]?.stage_name || null,
+          schedFirst[0]?.due_date || null,
+          dueAmount,
+          dueAmount,
+          emailResult.success ? 1 : 0,
+          emailResult.success ? 'sent' : 'failed',
+          demandLetterId || null,
+          emailResult.success ? null : emailResult.reason,
+        ]
+      );
+    } catch (logErr) {
+      console.error('Failed to log reminder:', logErr.message);
+    }
 
     if (!emailResult.success) {
       return res.status(500).json({ error: `Email failed: ${emailResult.reason}` });

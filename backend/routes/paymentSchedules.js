@@ -2,6 +2,7 @@ import { Router } from 'express';
 import pool from '../config/db.js';
 import { verifyToken } from '../middleware/auth.js';
 import { ensurePaymentSchedule, generatePaymentSchedule, recalculateDues } from '../services/paymentLedger.js';
+import { syncDueReminders } from '../services/dueReminderSync.js';
 
 const router = Router();
 
@@ -17,6 +18,7 @@ router.post('/generate/:clientId', verifyToken, async (req, res) => {
     await connection.beginTransaction();
     const clientId = Number(req.params.clientId);
     const dueInfo = await generatePaymentSchedule(clientId, connection);
+    await syncDueReminders(clientId, connection);
 
     req.app.get('io')?.emit('data_changed', { type: 'schedule_generated', client_id: clientId });
 
@@ -100,6 +102,7 @@ router.post('/client/:clientId', verifyToken, async (req, res) => {
 
     await connection.commit();
     await recalculateDues(clientId);
+    await syncDueReminders(clientId);
     req.app.get('io')?.emit('data_changed', { type: 'schedule_updated', client_id: clientId });
     
     res.status(201).json({ message: 'Schedule stage added successfully' });
@@ -146,11 +149,11 @@ router.post('/pay', verifyToken, async (req, res) => {
       ? Number(payment_percentage)
       : null;
 
-    if (finalPercentage !== null && !Number.isNaN(finalPercentage) && totalAmount > 0) {
-      finalAmount = (totalAmount * finalPercentage) / 100;
-    } else if (amount_includes_gst && finalAmount > 0 && gstPercent > 0) {
+    if (amount_includes_gst && finalAmount > 0 && gstPercent > 0) {
       finalAmount = finalAmount / (1 + (gstPercent / 100));
-      finalPercentage = totalAmount > 0 ? (finalAmount / totalAmount) * 100 : 0;
+      finalPercentage = totalAmount > 0 ? (finalAmount / totalAmount) * 100 : finalPercentage;
+    } else if (finalPercentage !== null && !Number.isNaN(finalPercentage) && totalAmount > 0) {
+      finalAmount = (totalAmount * finalPercentage) / 100;
     } else if (finalAmount > 0 && totalAmount > 0) {
       finalPercentage = (finalAmount / totalAmount) * 100;
     }
@@ -184,6 +187,7 @@ router.post('/pay', verifyToken, async (req, res) => {
 
     // Recalculate dues
     const dueInfo = await recalculateDues(Number(client_id), connection);
+    await syncDueReminders(Number(client_id), connection);
     const [schedules] = await connection.query(
       'SELECT * FROM payment_schedules WHERE client_id = ? ORDER BY stage_order ASC',
       [client_id]
@@ -261,6 +265,7 @@ router.get('/dues/:clientId', verifyToken, async (req, res) => {
 // ─── GET /api/payment-schedules/pending — All clients with pending dues ────
 router.get('/pending', verifyToken, async (req, res) => {
   try {
+    await syncDueReminders();
     const [dues] = await pool.query(`
       SELECT d.*,
         COALESCE(d.current_due, d.current_stage_due, d.combined_due, 0) AS current_due,
@@ -325,6 +330,7 @@ router.put('/:id/due-date', verifyToken, async (req, res) => {
     const [rows] = await pool.query('SELECT * FROM payment_schedules WHERE id = ?', [req.params.id]);
     if (rows.length === 0) return res.status(404).json({ error: 'Schedule not found' });
     await recalculateDues(rows[0].client_id);
+    await syncDueReminders(rows[0].client_id);
     req.app.get('io')?.emit('data_changed', { type: 'schedule_updated', client_id: rows[0].client_id });
     res.json(rows[0]);
   } catch (err) {
@@ -353,6 +359,7 @@ router.put('/:id/percentage', verifyToken, async (req, res) => {
     await pool.query('UPDATE payment_schedules SET percentage = ?, amount = ? WHERE id = ?', [Number(percentage), newAmount, scheduleId]);
 
     await recalculateDues(schedule.client_id);
+    await syncDueReminders(schedule.client_id);
 
     req.app.get('io')?.emit('data_changed', { type: 'schedule_updated', client_id: schedule.client_id });
 
@@ -375,6 +382,7 @@ router.delete('/payment/:id', verifyToken, async (req, res) => {
 
     // Recalculate dues after deletion
     await recalculateDues(payment[0].client_id);
+    await syncDueReminders(payment[0].client_id);
 
     req.app.get('io')?.emit('data_changed', { type: 'payment_deleted', client_id: payment[0].client_id });
     res.json({ message: 'Payment deleted and dues recalculated' });
@@ -407,6 +415,7 @@ router.delete('/:id', verifyToken, async (req, res) => {
 
     // Recalculate dues
     await recalculateDues(schedule.client_id);
+    await syncDueReminders(schedule.client_id);
     req.app.get('io')?.emit('data_changed', { type: 'schedule_updated', client_id: schedule.client_id });
     res.json({ message: 'Schedule deleted' });
   } catch (err) {

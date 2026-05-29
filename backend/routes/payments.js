@@ -294,10 +294,10 @@ router.post('/', verifyToken, async (req, res) => {
       ? Number(payment_percentage)
       : null;
 
-    if (finalPercentage !== null && !Number.isNaN(finalPercentage) && totalAmount > 0) {
-      finalAmount = (totalAmount * finalPercentage) / 100;
-    } else if (amount_includes_gst && finalAmount > 0 && gstPercent > 0) {
+    if (amount_includes_gst && finalAmount > 0 && gstPercent > 0) {
       finalAmount = finalAmount / (1 + (gstPercent / 100));
+    } else if (finalPercentage !== null && !Number.isNaN(finalPercentage) && totalAmount > 0) {
+      finalAmount = (totalAmount * finalPercentage) / 100;
     }
 
     const gstAmount = finalAmount * (gstPercent / 100);
@@ -354,7 +354,7 @@ router.post('/', verifyToken, async (req, res) => {
 // PUT /api/payments/:id
 router.put('/:id', verifyToken, async (req, res) => {
   try {
-    const { amount, payment_date, payment_mode, reference_no, notes } = req.body;
+    const { amount, amount_includes_gst = false, payment_date, payment_mode, reference_no, notes } = req.body;
 
     const [[paymentRow]] = await pool.query(
       `SELECT COALESCE(f.gst_percent, 0) AS gst_percent
@@ -363,11 +363,19 @@ router.put('/:id', verifyToken, async (req, res) => {
        WHERE cp.id = ?`,
       [req.params.id]
     );
-    const gstAmount = Number(amount || 0) * (Number(paymentRow?.gst_percent || 0) / 100);
+    
+    let finalAmount = Number(amount || 0);
+    const gstPercent = Number(paymentRow?.gst_percent || 0);
+    
+    if (amount_includes_gst && finalAmount > 0 && gstPercent > 0) {
+      finalAmount = finalAmount / (1 + (gstPercent / 100));
+    }
+    
+    const gstAmount = finalAmount * (gstPercent / 100);
 
     await pool.query(
       'UPDATE client_payments SET amount = ?, gst_amount = ?, payment_date = ?, payment_mode = ?, reference_no = ?, notes = ? WHERE id = ?',
-      [amount, gstAmount, payment_date || null, payment_mode || null, reference_no || null, notes || null, req.params.id]
+      [finalAmount, gstAmount, payment_date || null, payment_mode || null, reference_no || null, notes || null, req.params.id]
     );
 
     const [rows] = await pool.query(`

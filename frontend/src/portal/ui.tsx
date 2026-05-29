@@ -117,7 +117,9 @@ export function StatusBadge({ status }: { status: string }) {
 
 /* ─── INR formatter ─── */
 export function inr(amount: number | string | undefined): string {
-  return '₹' + Number(amount || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })
+  const n = Number(amount || 0)
+  const hasDecimals = n % 1 !== 0
+  return '₹' + n.toLocaleString('en-IN', { minimumFractionDigits: hasDecimals ? 2 : 0, maximumFractionDigits: 2 })
 }
 
 /* ─── Modal ─── */

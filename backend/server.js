@@ -129,27 +129,52 @@ app.get('/api/health', (_req, res) =>
 
 // ─── Serve Frontend Build (Production only) ────────────────────────────────
 // In production, Express serves the Vite-built React app as static files.
-// All non-API GET requests fall through to index.html for React Router to handle.
-const frontendDist = join(__dirname, 'dist');
+const pathsToCheck = [
+  join(__dirname, '..', 'frontend', 'dist'), // Standard zip structure
+  join(__dirname, 'dist'),                   // Legacy/fallback structure
+  join(process.cwd(), 'frontend', 'dist'),   // Relative to CWD
+  join(__dirname, '..', '..', 'frontend', 'dist') // If somehow nested deeper
+];
 
-if (isProd && existsSync(frontendDist)) {
-  app.use(
-    express.static(frontendDist, {
-      maxAge: '7d',   // Cache assets for 7 days
-      etag: true,
-      index: false,   // Let us handle index.html manually for SPA fallback
-    })
-  );
+let distPath = null;
+for (const p of pathsToCheck) {
+  if (existsSync(p)) {
+    distPath = p;
+    break;
+  }
+}
 
-  // SPA fallback — any non-API route returns index.html
-  app.get('*', (req, res) => {
-    // Don't catch /api/* — those are already handled above
-    if (req.path.startsWith('/api/')) {
-      return res.status(404).json({ error: 'API route not found' });
-    }
-    res.sendFile(join(frontendDist, 'index.html'));
-  });
-} else if (!isProd) {
+if (isProd) {
+  if (distPath) {
+    app.use(
+      express.static(distPath, {
+        maxAge: '7d',
+        etag: true,
+        index: false,
+      })
+    );
+
+    app.get('*', (req, res) => {
+      if (req.path.startsWith('/api/')) {
+        return res.status(404).json({ error: 'API route not found' });
+      }
+      res.sendFile(join(distPath, 'index.html'));
+    });
+  } else {
+    // If we're in prod but couldn't find the dist folder, show a helpful error
+    // instead of a blank "Cannot GET /"
+    app.get('*', (req, res) => {
+      if (req.path.startsWith('/api/')) return res.status(404).json({ error: 'API route not found' });
+      res.status(500).json({
+        error: 'Frontend build not found.',
+        message: 'The server could not locate the frontend/dist folder.',
+        checkedPaths: pathsToCheck,
+        dirname: __dirname,
+        cwd: process.cwd()
+      });
+    });
+  }
+} else {
   app.get('/', (_req, res) =>
     res.json({ message: '🚀 API running in dev mode. Frontend served by Vite on :5173.' })
   );
@@ -178,14 +203,21 @@ app.use((err, req, res, _next) => {
 async function runMigrations() {
   try {
     const pool = (await import('./config/db.js')).default;
-    const migrationPath = join(__dirname, 'migrations', 'work_projection_migration.sql');
-    if (existsSync(migrationPath)) {
-      const sql = readFileSync(migrationPath, 'utf-8');
-      const statements = sql.split(';').map(s => s.trim()).filter(s => s.length > 0);
-      for (const statement of statements) {
-        await pool.query(statement);
+    const connection = await pool.getConnection();
+    const migrationFiles = ['work_projection_migration.sql', 'due_reminders_migration.sql'];
+    try {
+      for (const file of migrationFiles) {
+        const migrationPath = join(__dirname, 'migrations', file);
+        if (!existsSync(migrationPath)) continue;
+        const sql = readFileSync(migrationPath, 'utf-8');
+        const statements = sql.split(';').map(s => s.trim()).filter(s => s.length > 0);
+        for (const statement of statements) {
+          await connection.query(statement);
+        }
+        console.log(`✅ Migration applied: ${file}`);
       }
-      console.log('✅ Work projection migration applied');
+    } finally {
+      connection.release();
     }
   } catch (err) {
     // Table already exists or other non-critical error
@@ -200,7 +232,7 @@ httpServer.listen(PORT, async () => {
   console.log(`   Port    : ${PORT}`);
   console.log(`   Mode    : ${process.env.NODE_ENV || 'development'}`);
   console.log(`   Origins : ${isProd ? allowedOrigins.join(', ') : '* (dev)'}`);
-  console.log(`   Frontend: ${isProd && existsSync(frontendDist) ? frontendDist : 'served by Vite'}\n`);
+  console.log(`   Frontend: ${isProd && distPath ? distPath : 'served by Vite'}\n`);
 
   // Run database migrations
   await runMigrations();

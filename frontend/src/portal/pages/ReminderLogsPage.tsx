@@ -1,32 +1,92 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Bell, Mail, FileText, Download, Clock, CheckCircle2, RefreshCw, Calendar, Send, Paperclip, Search, MessageCircle, AlertTriangle, Trash2, CreditCard } from 'lucide-react'
-import { api, type PendingDue, type ReminderLog, type ReminderStats } from '../api'
+import { useNavigate } from 'react-router-dom'
+import { Bell, Mail, FileText, Download, Clock, CheckCircle2, RefreshCw, Calendar, Send, Paperclip, Search, MessageCircle, AlertTriangle, CreditCard, CheckSquare, Square } from 'lucide-react'
+import { api, type DueReminder, type PendingDue, type ReminderLog, type ReminderStats } from '../api'
 import { usePortalToast } from '../toast'
 import { PortalCard, PortalButton, Modal, EmptyState, inr, Input } from '../ui'
 
 type Tab = 'upcoming' | 'history'
+type DisplayDue = PendingDue & {
+  reminder_id: number;
+  due_status: 'upcoming' | 'overdue' | 'paid';
+  email_status: DueReminder['email_status'];
+  reminder_count: number;
+  last_sent_at: string | null;
+  gst_percent?: number;
+  gst_amount?: number;
+  total_payable?: number;
+}
+
+function mapDueReminder(due: DueReminder): DisplayDue {
+  return {
+    id: due.id,
+    reminder_id: due.id,
+    client_id: due.client_id,
+    flat_id: due.flat_id || 0,
+    total_flat_amount: Number(due.total_amount || 0),
+    total_paid: Number(due.total_paid || 0),
+    total_due: Number(due.due_amount || 0),
+    current_stage_name: due.projection_stage,
+    current_stage_due: Number(due.due_amount || 0),
+    current_due: Number(due.due_amount || 0),
+    next_stage_name: '',
+    next_stage_amount: 0,
+    combined_due: Number(due.due_amount || 0),
+    current_schedule_id: due.schedule_id || undefined,
+    current_due_date: due.due_date || undefined,
+    current_stage_percentage: Number(due.payment_percentage || 0),
+    client_name: due.client_name,
+    unique_client_id: '',
+    phone: due.phone,
+    email: due.email,
+    flat_number: due.flat_unit,
+    apartment_name: due.apartment_name,
+    due_status: due.status,
+    email_status: due.email_status,
+    reminder_count: Number(due.reminder_count || 0),
+    last_sent_at: due.last_sent_at,
+    gst_percent: Number(due.gst_percent || 0),
+    gst_amount: Number(due.gst_amount || 0),
+    total_payable: Number(due.total_payable || due.due_amount || 0),
+  }
+}
 
 export function ReminderLogsPage() {
+  const navigate = useNavigate()
   const toast = usePortalToast()
   const [tab, setTab] = useState<Tab>('upcoming')
-  const [pendingDues, setPendingDues] = useState<PendingDue[]>([])
+  const [pendingDues, setPendingDues] = useState<DisplayDue[]>([])
   const [logs, setLogs] = useState<ReminderLog[]>([])
   const [stats, setStats] = useState<ReminderStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [dueFilter, setDueFilter] = useState<'all' | 'overdue' | 'upcoming'>('all')
+  const [dateFilter, setDateFilter] = useState('')
+  const [minDue, setMinDue] = useState('')
+  const [maxDue, setMaxDue] = useState('')
+  const [historySearch, setHistorySearch] = useState('')
+  const [selectedIds, setSelectedIds] = useState<number[]>([])
+  const [bulkDate, setBulkDate] = useState(() => {
+    const d = new Date()
+    d.setDate(d.getDate() + 1)
+    return d.toISOString().split('T')[0]
+  })
+  const [bulkModal, setBulkModal] = useState(false)
+  const [bulkSending, setBulkSending] = useState(false)
+
+  const [editingTemplate, setEditingTemplate] = useState(false)
+  const [bulkSubject, setBulkSubject] = useState('RG INFRA - Due Payment Reminder | {{apartment_name}}, Flat {{flat_unit}}')
+  const [bulkTemplate, setBulkTemplate] = useState(`<p>Dear <strong>{{client_name}}</strong>,</p>
+<p>This is a reminder that payment of <strong>Rs. {{due_amount}}</strong> is due for <strong>{{apartment_name}}, Flat {{flat_unit}}</strong>.</p>
+<p><strong>Stage:</strong> {{projection_stage}}<br><strong>GST:</strong> Rs. {{gst_amount}}<br><strong>Total Payable:</strong> Rs. {{total_payable}}<br><strong>Due Date:</strong> {{due_date}}</p>
+<p>Please arrange the payment as per the bank details shared by R G Infra. For support, contact +91 93347 00319.</p>`)
 
   // Send reminder modal
   const [sendModal, setSendModal] = useState<PendingDue | null>(null)
   const [attachDL, setAttachDL] = useState(false)
   const [sending, setSending] = useState(false)
 
-  // Due date modal
-  const [dateModal, setDateModal] = useState<{ clientId: number; clientName: string } | null>(null)
-  const [schedules, setSchedules] = useState<any[]>([])
-  const [initialSchedules, setInitialSchedules] = useState<any[]>([])
-  const [dateLoading, setDateLoading] = useState(false)
-  const [savingScheduleChanges, setSavingScheduleChanges] = useState(false)
+
 
   // Add Payment modal
   const [paymentModal, setPaymentModal] = useState<{ clientId: number; clientName: string; dueAmount: number } | null>(null)
@@ -39,12 +99,13 @@ export function ReminderLogsPage() {
   const load = async () => {
     try {
       setLoading(true)
-      const [dues, logsData, statsData] = await Promise.all([
-        api.getPendingDues(), api.getReminderLogs(), api.getReminderStats(),
+      const [dueRows, logsData, statsData] = await Promise.all([
+        api.getDueReminders(), api.getReminderLogs(), api.getReminderStats(),
       ])
-      setPendingDues(dues)
+      setPendingDues(dueRows.map(mapDueReminder))
       setLogs(logsData)
       setStats(statsData)
+      setSelectedIds([])
     } catch { toast.push({ tone: 'error', title: 'Failed to load' }) }
     finally { setLoading(false) }
   }
@@ -66,8 +127,64 @@ export function ReminderLogsPage() {
     today.setHours(0, 0, 0, 0)
     const matchesDueFilter = dueFilter === 'all'
       || (dueFilter === 'overdue' ? !!currentDue && currentDue < today : !currentDue || currentDue >= today)
-    return matchesSearch && matchesDueFilter
-  }), [pendingDues, search, dueFilter])
+    const matchesDate = !dateFilter || due.current_due_date?.slice(0, 10) === dateFilter
+    const amount = Number(due.combined_due || 0)
+    const matchesMin = !minDue || amount >= Number(minDue)
+    const matchesMax = !maxDue || amount <= Number(maxDue)
+    return matchesSearch && matchesDueFilter && matchesDate && matchesMin && matchesMax
+  }), [pendingDues, search, dueFilter, dateFilter, minDue, maxDue])
+
+  const filteredLogs = useMemo(() => {
+    const q = historySearch.toLowerCase().trim()
+    if (!q) return logs
+    return logs.filter(log =>
+      [log.client_name, log.unique_client_id, log.flat_number, log.apartment_name, (log as any).stage_name]
+        .some(v => String(v || '').toLowerCase().includes(q))
+    )
+  }, [logs, historySearch])
+
+  const allFilteredSelected = filteredDues.length > 0 && filteredDues.every(due => selectedIds.includes(due.reminder_id))
+
+  const toggleSelectAll = () => {
+    setSelectedIds(allFilteredSelected ? [] : filteredDues.map(due => due.reminder_id))
+  }
+
+  const toggleSelect = (id: number) => {
+    setSelectedIds(prev => prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id])
+  }
+
+  const handleBulkSend = async () => {
+    setBulkSending(true)
+    try {
+      const res = await api.sendBulkDueEmails({
+        ...(selectedIds.length ? { reminder_ids: selectedIds } : { due_date: bulkDate }),
+        ...(editingTemplate ? { subject: bulkSubject, html_template: bulkTemplate } : {}),
+      })
+      toast.push({ tone: 'success', title: res.message })
+      setBulkModal(false)
+      load()
+    } catch (e) {
+      toast.push({ tone: 'error', title: e instanceof Error ? e.message : 'Bulk email failed' })
+    } finally {
+      setBulkSending(false)
+    }
+  }
+
+
+
+  const handleExport = async (format: 'xlsx' | 'pdf' = 'xlsx') => {
+    try {
+      const { blob, filename } = await api.exportDueReminderReport(format)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      toast.push({ tone: 'error', title: 'Export failed' })
+    }
+  }
 
   // Handle save payment
   const handleSavePayment = async () => {
@@ -96,6 +213,8 @@ export function ReminderLogsPage() {
     }
   }
 
+
+
   // Send enhanced reminder
   const handleSend = async () => {
     if (!sendModal) return
@@ -111,101 +230,8 @@ export function ReminderLogsPage() {
     } finally { setSending(false) }
   }
 
-  // Open due date editor
-  const openDateEditor = async (clientId: number, clientName: string) => {
-    setDateModal({ clientId, clientName })
-    setDateLoading(true)
-    try {
-      const data = await api.getClientSchedule(clientId)
-      setSchedules(data)
-      setInitialSchedules(data)
-    } catch { toast.push({ tone: 'error', title: 'Failed to load schedule' }) }
-    finally { setDateLoading(false) }
-  }
 
-  // Format date to local YYYY-MM-DD for the input
-  const formatDateForInput = (dateStr: string | null | undefined) => {
-    if (!dateStr) return '';
-    try {
-      const d = new Date(dateStr);
-      if (isNaN(d.getTime())) return dateStr.slice(0, 10);
-      const year = d.getFullYear();
-      const month = String(d.getMonth() + 1).padStart(2, '0');
-      const day = String(d.getDate()).padStart(2, '0');
-      return `${year}-${month}-${day}`;
-    } catch {
-      return dateStr.slice(0, 10);
-    }
-  }
 
-  const hasScheduleChanges = useMemo(() => {
-    if (!initialSchedules.length || schedules.length === 0) return false
-    return schedules.some((schedule) => {
-      const base = initialSchedules.find((item) => item.id === schedule.id)
-      if (!base) return true
-      const nextDue = formatDateForInput(schedule.due_date)
-      const prevDue = formatDateForInput(base.due_date)
-      const nextPct = Number(schedule.percentage)
-      const prevPct = Number(base.percentage)
-      const pctChanged = !Number.isNaN(nextPct) && nextPct !== prevPct
-      return nextDue !== prevDue || pctChanged
-    })
-  }, [schedules, initialSchedules])
-
-  const saveScheduleChanges = async () => {
-    if (!dateModal) return
-
-    const changes: Array<{ type: 'due' | 'pct'; id: number; value: string | number }> = []
-    for (const schedule of schedules) {
-      const base = initialSchedules.find((item) => item.id === schedule.id)
-      if (!base) continue
-
-      const nextDue = formatDateForInput(schedule.due_date)
-      const prevDue = formatDateForInput(base.due_date)
-      if (nextDue !== prevDue) {
-        changes.push({ type: 'due', id: schedule.id, value: nextDue })
-      }
-
-      const nextPct = Number(schedule.percentage)
-      const prevPct = Number(base.percentage)
-      if (!Number.isNaN(nextPct) && nextPct !== prevPct) {
-        changes.push({ type: 'pct', id: schedule.id, value: nextPct })
-      }
-    }
-
-    if (!changes.length) {
-      toast.push({ tone: 'info', title: 'No changes to save' })
-      return
-    }
-
-    const invalidPct = changes.find((change) => change.type === 'pct' && (Number(change.value) < 0 || Number(change.value) > 100))
-    if (invalidPct) {
-      toast.push({ tone: 'error', title: 'Invalid percentage value' })
-      return
-    }
-
-    setSavingScheduleChanges(true)
-    try {
-      for (const change of changes) {
-        if (change.type === 'due') {
-          await api.setScheduleDueDate(change.id, String(change.value))
-        } else {
-          await api.setSchedulePercentage(change.id, Number(change.value))
-        }
-      }
-
-      const data = await api.getClientSchedule(dateModal.clientId)
-      setSchedules(data)
-      setInitialSchedules(data)
-      load()
-      toast.push({ tone: 'success', title: 'Schedule changes saved' })
-    } catch (e) {
-      toast.push({ tone: 'error', title: e instanceof Error ? e.message : 'Failed to save changes' })
-      setSchedules(initialSchedules)
-    } finally {
-      setSavingScheduleChanges(false)
-    }
-  }
 
   // Download demand letter
   const handleDownloadDL = async (clientId: number) => {
@@ -254,7 +280,12 @@ export function ReminderLogsPage() {
           <h1 className="text-2xl font-extrabold text-slate-900">Due Reminders</h1>
           <p className="text-sm text-slate-500 mt-1">Track dues by percentage, set due dates & send reminders</p>
         </div>
-        <PortalButton variant="outline" onClick={load}><RefreshCw className="h-4 w-4" /> Refresh</PortalButton>
+        <div className="flex flex-wrap items-center gap-2">
+          <PortalButton variant="outline" onClick={() => handleExport('xlsx')}><Download className="h-4 w-4" /> Export Excel</PortalButton>
+          <PortalButton variant="outline" onClick={() => handleExport('pdf')}><FileText className="h-4 w-4" /> Export PDF</PortalButton>
+          <PortalButton onClick={() => setBulkModal(true)}><Mail className="h-4 w-4" /> Send Bulk Email</PortalButton>
+          <PortalButton variant="outline" onClick={load}><RefreshCw className="h-4 w-4" /> Refresh</PortalButton>
+        </div>
       </div>
 
       {/* Stats */}
@@ -317,19 +348,58 @@ export function ReminderLogsPage() {
                 </button>
               ))}
             </div>
+            <input
+              type="date"
+              value={dateFilter}
+              onChange={(e) => setDateFilter(e.target.value)}
+              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none ring-orange-400/40 focus:border-orange-400 focus:ring-2"
+              title="Filter by due date"
+            />
+            <input
+              type="number"
+              value={minDue}
+              onChange={(e) => setMinDue(e.target.value)}
+              placeholder="Min due"
+              className="w-28 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none ring-orange-400/40 focus:border-orange-400 focus:ring-2"
+            />
+            <input
+              type="number"
+              value={maxDue}
+              onChange={(e) => setMaxDue(e.target.value)}
+              placeholder="Max due"
+              className="w-28 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none ring-orange-400/40 focus:border-orange-400 focus:ring-2"
+            />
           </div>
           {filteredDues.length === 0 ? (
             <EmptyState title="No pending dues" sub="All clients are up to date" />
           ) : (
             <div className="space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <button onClick={toggleSelectAll} className="inline-flex items-center gap-2 text-sm font-bold text-slate-700">
+                  {allFilteredSelected ? <CheckSquare className="h-4 w-4 text-orange-500" /> : <Square className="h-4 w-4 text-slate-400" />}
+                  Select All ({filteredDues.length})
+                </button>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-slate-500">{selectedIds.length} selected</span>
+                  <PortalButton onClick={() => setBulkModal(true)} disabled={selectedIds.length === 0} className="!text-xs !px-3 !py-1.5">
+                    <Mail className="h-3.5 w-3.5" /> Send Selected
+                  </PortalButton>
+                </div>
+              </div>
               {filteredDues.map(due => (
                 <div key={due.id} className="rounded-xl border border-slate-200 bg-white p-4 hover:shadow-md transition-shadow">
                   <div className="flex items-start gap-4 flex-wrap">
+                    <button onClick={() => toggleSelect(due.reminder_id)} className="mt-1 text-slate-400 hover:text-orange-500" title="Select reminder">
+                      {selectedIds.includes(due.reminder_id) ? <CheckSquare className="h-5 w-5 text-orange-500" /> : <Square className="h-5 w-5" />}
+                    </button>
                     {/* Client Info */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-sm font-bold text-slate-900">{due.client_name}</span>
                         <span className="text-xs text-slate-400 font-mono">{due.unique_client_id}</span>
+                        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${statusBadge(due.email_status === 'not_sent' ? 'skipped' : due.email_status)}`}>
+                          {due.email_status.replace('_', ' ')}
+                        </span>
                       </div>
                       <div className="flex items-center gap-3 mt-1 text-xs text-slate-500 flex-wrap">
                         {due.apartment_name && <span>🏠 {due.apartment_name}</span>}
@@ -372,10 +442,11 @@ export function ReminderLogsPage() {
                           <div className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-emerald-500 transition-all"
                             style={{ width: `${due.total_flat_amount > 0 ? (due.total_paid / due.total_flat_amount) * 100 : 0}%` }} />
                         </div>
-                        <div className="flex gap-3 mt-1 text-[10px] text-slate-400 font-semibold">
+                        <div className="flex gap-3 mt-1 text-[10px] text-slate-400 font-semibold flex-wrap">
                           <span>{due.total_flat_amount > 0 ? Math.round((due.total_paid / due.total_flat_amount) * 100) : 0}% paid</span>
                           <span>Paid: {inr(due.total_paid)} / {inr(due.total_flat_amount)}</span>
-                          <span>Remaining: {inr(due.total_due)}</span>
+                          <span>Base Due: {inr(due.total_due)}</span>
+                          {Number(due.gst_amount || 0) > 0 && <span>GST: {inr(due.gst_amount)}</span>}
                         </div>
                       </div>
                     </div>
@@ -384,26 +455,27 @@ export function ReminderLogsPage() {
                     <div className="text-right shrink-0">
                       <div className="text-xs text-slate-400">Due Now</div>
                       <div className="text-xl font-extrabold text-red-600">{inr(due.combined_due)}</div>
-                      <div className="text-[10px] text-slate-400 mt-0.5">Total Remaining: {inr(due.total_due)}</div>
+                      {Number(due.gst_amount || 0) > 0 && <div className="text-[10px] text-slate-400 mt-0.5">GST: {inr(due.gst_amount)}</div>}
+                      <div className="text-[10px] text-slate-500 mt-0.5 font-bold">Payable: {inr(due.total_payable || due.combined_due)}</div>
                     </div>
 
                     {/* Actions */}
                     <div className="flex flex-col gap-1.5 shrink-0">
                       <PortalButton onClick={() => {
-                        setPaymentModal({ clientId: due.client_id, clientName: due.client_name, dueAmount: due.combined_due })
-                        setPaymentAmount(String(due.combined_due))
-                        setPaymentDate(new Date().toISOString().split('T')[0])
-                        setPaymentMode('bank_transfer')
-                        setPaymentRef('')
+                        const hasGst = Number(due.gst_amount || 0) > 0
+                        const params = new URLSearchParams({
+                          client_id: String(due.client_id),
+                          amount: String(due.total_payable || due.combined_due || 0),
+                          ...(hasGst ? { gst_inclusive: 'true' } : {}),
+                        })
+                        navigate(`/portal/payments?${params.toString()}`)
                       }} className="!text-xs !px-3 !py-1.5" variant="outline">
                         <CreditCard className="h-3.5 w-3.5 text-emerald-600" /> Add Payment
-                      </PortalButton>
-                      <PortalButton onClick={() => openDateEditor(due.client_id, due.client_name)} className="!text-xs !px-3 !py-1.5" variant="outline">
-                        <Calendar className="h-3.5 w-3.5" /> Set Due Date
                       </PortalButton>
                       <PortalButton onClick={() => { setSendModal(due); setAttachDL(false) }} className="!text-xs !px-3 !py-1.5" variant="primary">
                         <Mail className="h-3.5 w-3.5" /> Send Reminder
                       </PortalButton>
+
                       <PortalButton onClick={() => handleDownloadDL(due.client_id)} className="!text-xs !px-3 !py-1.5" variant="outline">
                         <Download className="h-3.5 w-3.5" /> Demand Letter
                       </PortalButton>
@@ -422,13 +494,23 @@ export function ReminderLogsPage() {
       {/* ════ TAB: HISTORY ════ */}
       {tab === 'history' && (
         <PortalCard>
-          <div className="text-lg font-extrabold text-slate-900 mb-4">Reminder History ({logs.length})</div>
-          {logs.length === 0 ? (
+          <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+            <div className="text-lg font-extrabold text-slate-900">Reminder History ({logs.length})</div>
+            <div className="relative min-w-[220px]">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input
+                placeholder="Search client, flat..."
+                onChange={e => setHistorySearch(e.target.value)}
+                className="w-full rounded-xl border border-slate-300 bg-white py-2.5 pl-10 pr-4 text-sm outline-none ring-orange-400/40 focus:border-orange-400 focus:ring-2"
+              />
+            </div>
+          </div>
+          {filteredLogs.length === 0 ? (
             <EmptyState title="No reminders sent yet" sub="Send due reminders from the Upcoming Dues tab" />
           ) : (
             <div className="space-y-2">
-              {logs.map(log => (
-                <div key={log.id} className="rounded-xl border border-slate-100 bg-white p-4 hover:shadow-sm transition-shadow">
+              {filteredLogs.map(log => (
+                <div key={log.id} className="rounded-xl border border-slate-100 bg-white p-4 hover:shadow-md transition-shadow">
                   <div className="flex items-start gap-3">
                     <div className={`mt-0.5 h-9 w-9 rounded-xl flex items-center justify-center shrink-0 ${log.trigger_type === 'cron' ? 'bg-blue-50 border border-blue-200' : 'bg-orange-50 border border-orange-200'}`}>
                       {log.trigger_type === 'cron' ? <Clock className="h-4 w-4 text-blue-500" /> : <Send className="h-4 w-4 text-orange-500" />}
@@ -440,12 +522,18 @@ export function ReminderLogsPage() {
                         <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${statusBadge(log.email_status)}`}>
                           {log.email_status}
                         </span>
+                        {log.demand_letter_id && (
+                          <span className="rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 text-[10px] font-bold text-orange-700 uppercase">
+                            + Demand Letter
+                          </span>
+                        )}
                       </div>
                       <div className="flex items-center gap-3 mt-1 text-xs text-slate-500 flex-wrap">
                         {log.apartment_name && <span>🏠 {log.apartment_name}</span>}
                         {log.flat_number && <span>🚪 Flat {log.flat_number}</span>}
+                        {(log as any).stage_name && <span>📋 {(log as any).stage_name}</span>}
                         {log.due_date && <span>📅 Due: {new Date(log.due_date).toLocaleDateString('en-IN')}</span>}
-                        <span>💰 Due: {inr(log.combined_due)}</span>
+                        <span>💰 Amount: {inr(log.combined_due)}</span>
                       </div>
                       {log.demand_letter_file && (
                         <a href={log.demand_letter_url} target="_blank" rel="noopener noreferrer"
@@ -527,6 +615,51 @@ export function ReminderLogsPage() {
         </div>
       </Modal>
 
+      {/* ════ BULK EMAIL MODAL ════ */}
+      <Modal open={bulkModal} onClose={() => setBulkModal(false)} title="Send Bulk Due Emails">
+        <div className="space-y-4">
+          <div className="rounded-xl border border-orange-200 bg-orange-50 p-4 text-sm text-orange-900">
+            {selectedIds.length > 0
+              ? `Send reminder emails to ${selectedIds.length} selected client(s).`
+              : 'Choose a due date and the system will send reminders to every unpaid client due on that date.'}
+          </div>
+          {selectedIds.length === 0 && (
+            <Input label="Due Date" type="date" value={bulkDate} onChange={setBulkDate} />
+          )}
+          <label className="flex items-center gap-3 rounded-xl border border-slate-200 p-3 text-sm font-semibold text-slate-700">
+            <input type="checkbox" checked={allFilteredSelected} onChange={toggleSelectAll} className="h-4 w-4 rounded border-slate-300 text-orange-500 focus:ring-orange-400" />
+            Select all filtered reminders
+          </label>
+          <label className="flex items-center gap-3 rounded-xl border border-slate-200 p-3 text-sm font-semibold text-slate-700">
+            <input type="checkbox" checked={editingTemplate} onChange={(e) => setEditingTemplate(e.target.checked)} className="h-4 w-4 rounded border-slate-300 text-orange-500 focus:ring-orange-400" />
+            Edit email template for this send
+          </label>
+          {editingTemplate && (
+            <div className="space-y-3">
+              <Input label="Email Subject" value={bulkSubject} onChange={setBulkSubject} />
+              <div>
+                <label className="text-sm font-bold uppercase tracking-wider text-slate-500">HTML Template</label>
+                <textarea
+                  value={bulkTemplate}
+                  onChange={(e) => setBulkTemplate(e.target.value)}
+                  rows={8}
+                  className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-900 shadow-sm outline-none ring-orange-400/25 transition focus:border-orange-400 focus:ring-4"
+                />
+                <div className="mt-1 text-xs text-slate-400">Use placeholders like {'{{client_name}}'}, {'{{flat_unit}}'}, {'{{due_amount}}'}, {'{{gst_amount}}'}, {'{{total_payable}}'}, {'{{due_date}}'}.</div>
+              </div>
+            </div>
+          )}
+        </div>
+        <div className="mt-6 flex justify-end gap-2">
+          <PortalButton variant="outline" onClick={() => setBulkModal(false)}>Cancel</PortalButton>
+          <PortalButton onClick={handleBulkSend} disabled={bulkSending || (selectedIds.length === 0 && !bulkDate)}>
+            {bulkSending ? 'Sending...' : 'Confirm & Send Bulk Email'}
+          </PortalButton>
+        </div>
+      </Modal>
+
+
+
       {/* ════ ADD PAYMENT MODAL ════ */}
       <Modal open={!!paymentModal} onClose={() => setPaymentModal(null)} title={`Add Payment — ${paymentModal?.clientName || ''}`}>
         <div className="space-y-4">
@@ -555,130 +688,6 @@ export function ReminderLogsPage() {
         </div>
       </Modal>
 
-      {/* ════ DUE DATE EDITOR MODAL ════ */}
-      <Modal open={!!dateModal} onClose={() => setDateModal(null)} title={`Set Due Dates — ${dateModal?.clientName || ''}`} wide>
-        {dateLoading ? (
-          <div className="flex justify-center py-8"><div className="h-6 w-6 animate-spin rounded-full border-4 border-orange-400 border-t-transparent" /></div>
-        ) : schedules.length === 0 ? (
-          <div className="text-center py-8">
-            <p className="text-sm text-slate-500 mb-3">No payment schedule found for this client.</p>
-            <PortalButton onClick={async () => {
-              if (!dateModal) return
-              try {
-                await api.generateSchedule(dateModal.clientId)
-                toast.push({ tone: 'success', title: 'Schedule generated!' })
-                const data = await api.getClientSchedule(dateModal.clientId)
-                setSchedules(data)
-                load()
-              } catch (e) { toast.push({ tone: 'error', title: e instanceof Error ? e.message : 'Failed' }) }
-            }}>Generate Schedule</PortalButton>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {schedules.map((s: any) => (
-              <div key={s.id} className={`flex items-center gap-3 rounded-xl border p-3 ${
-                s.status === 'paid' ? 'border-emerald-200 bg-emerald-50/30' : s.status === 'partial' ? 'border-amber-200 bg-amber-50/30' : 'border-slate-200 bg-white'
-              }`}>
-                <div className={`h-8 w-8 rounded-lg flex items-center justify-center text-xs font-bold ${
-                  s.status === 'paid' ? 'bg-emerald-100 text-emerald-600' : s.status === 'partial' ? 'bg-amber-100 text-amber-600' : 'bg-slate-100 text-slate-500'
-                }`}>
-                  {s.stage_order}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5 text-sm font-bold text-slate-800 flex-wrap">
-                    <span className="text-slate-800 font-extrabold mr-2">{s.stage_name || `Stage ${s.stage_order}`}</span>
-                    <input 
-                      type="number"
-                      className="w-14 text-center border-b border-dashed border-slate-300 text-orange-600 bg-transparent outline-none focus:border-orange-500 appearance-none m-0 p-0 disabled:opacity-50 disabled:cursor-not-allowed font-bold"
-                      value={s.percentage}
-                      onChange={(e) => setSchedules(prev => prev.map(sch => sch.id === s.id ? { ...sch, percentage: e.target.value } : sch))}
-                      disabled={s.status === 'paid'}
-                      step="0.01"
-                      min="0"
-                      max="100"
-                    />
-                    <span className="text-slate-500 font-normal">%</span>
-                    <span className="text-slate-300 mx-1">—</span>
-                    <span className="text-slate-600 font-semibold">{inr(s.amount)}</span>
-                  </div>
-                  <div className="text-xs text-slate-500 mt-0.5">
-                    {s.status === 'paid' ? (
-                      <span className="text-emerald-600 font-bold">✓ Fully Paid</span>
-                    ) : s.status === 'partial' ? (
-                      <span className="text-amber-600 font-bold">Partial — Paid: {inr(s.paid_amount)}, Due: {inr(s.due_amount)}</span>
-                    ) : (
-                      <span className="text-red-600 font-bold">Pending — Due: {inr(s.due_amount)}</span>
-                    )}
-                  </div>
-                </div>
-                <div className="shrink-0 flex flex-col items-end">
-                  <label className="text-[10px] font-bold text-slate-400 block mb-0.5">DUE DATE</label>
-                  <div className="flex items-center gap-2">
-                    {s.due_date && s.status !== 'paid' && (
-                      <>
-                        {new Date(s.due_date) <= new Date() ? (
-                          <span className="rounded-full bg-red-100 text-red-700 px-2 py-0.5 text-[10px] font-bold flex items-center gap-1">
-                            <AlertTriangle className="h-3 w-3" /> OVERDUE
-                          </span>
-                        ) : new Date(s.due_date).getTime() - new Date().getTime() <= 7 * 24 * 60 * 60 * 1000 ? (
-                          <span className="rounded-full bg-amber-100 text-amber-700 px-2 py-0.5 text-[10px] font-bold flex items-center gap-1">
-                            <Clock className="h-3 w-3" /> DUE SOON
-                          </span>
-                        ) : null}
-                      </>
-                    )}
-                    <input
-                      type="date"
-                      value={formatDateForInput(s.due_date)}
-                      onChange={e => setSchedules(prev => prev.map(sch => sch.id === s.id ? { ...sch, due_date: e.target.value } : sch))}
-                      disabled={s.status === 'paid'}
-                      className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-orange-400/30 focus:border-orange-400 disabled:opacity-40"
-                    />
-                  </div>
-                </div>
-                {/* Delete button */}
-                {s.status !== 'paid' && (
-                  <button
-                    onClick={async () => {
-                      if (!confirm(`Delete this schedule row (${s.percentage}% — ${inr(s.amount)})? This cannot be undone.`)) return
-                      try {
-                        await api.deleteSchedule(s.id)
-                        toast.push({ tone: 'success', title: 'Schedule deleted' })
-                        const data = await api.getClientSchedule(dateModal!.clientId)
-                        setSchedules(data)
-                        setInitialSchedules(data)
-                        load()
-                      } catch (e) {
-                        toast.push({ tone: 'error', title: e instanceof Error ? e.message : 'Failed to delete' })
-                      }
-                    }}
-                    className="shrink-0 p-1.5 rounded-lg text-red-400 hover:text-red-600 hover:bg-red-50 transition"
-                    title="Delete this schedule row"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                )}
-              </div>
-            ))}
-            {/* Total percentage indicator */}
-            {(() => {
-              const totalPct = schedules.reduce((sum: number, s: any) => sum + (Number(s.percentage) || 0), 0)
-              return (
-                <div className="flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold bg-slate-50 border border-slate-200 text-slate-700">
-                  <CheckCircle2 className="h-3.5 w-3.5 text-slate-500" />
-                  Total Projected: {totalPct.toFixed(2)}%
-                </div>
-              )
-            })()}
-          </div>
-        )}
-        <div className="mt-5 flex justify-end gap-2">
-          <PortalButton variant="outline" onClick={() => setDateModal(null)}>Close</PortalButton>
-          <PortalButton onClick={saveScheduleChanges} disabled={!hasScheduleChanges || savingScheduleChanges}>
-            {savingScheduleChanges ? 'Saving...' : 'Save Changes'}
-          </PortalButton>
-        </div>
-      </Modal>
     </div>
   )
 }

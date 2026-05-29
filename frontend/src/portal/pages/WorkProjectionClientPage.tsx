@@ -45,6 +45,11 @@ export function WorkProjectionClientPage() {
   // ── Form state ──
   const [selectedMilestone, setSelectedMilestone] = useState('')
   const [completionDate, setCompletionDate] = useState(new Date().toISOString().split('T')[0])
+  const [dueDate, setDueDate] = useState(() => {
+    const d = new Date()
+    d.setDate(d.getDate() + 7)
+    return d.toISOString().split('T')[0]
+  })
   const [notes, setNotes] = useState('')
   const [proofFile, setProofFile] = useState<File | null>(null)
   const [autoSendEmail, setAutoSendEmail] = useState(true)
@@ -105,6 +110,14 @@ export function WorkProjectionClientPage() {
   const pendingMilestones = data?.milestones.filter(m => m.status === 'pending') || []
   const selectedDef = pendingMilestones.find(m => m.milestone_name === selectedMilestone)
   const pct = data?.total_completed_percentage || 0
+  const gstPercent = Number(data?.gst_percent || 0)
+  const grandTotalAmount = Number(data?.grand_total_amount || data?.total_property_amount || 0)
+  const totalDueGeneratedWithGst = Number(data?.total_due_generated_with_gst || data?.total_due_generated || 0)
+  const remainingCollectableWithGst = Number(data?.remaining_collectable_with_gst || data?.remaining_collectable || 0)
+  const scheduleCombinedDue = Number(data?.schedule_combined_due || 0)
+  const scheduleCarryOver = Number(data?.schedule_carry_over || 0)
+  const scheduleNextInstallment = Number(data?.schedule_next_installment_amount || 0)
+  const scheduleNextStageAmount = Number(data?.schedule_next_stage_amount || 0)
 
   // Last payment info
   const lastPayment = payments.length > 0 ? payments[0] : null
@@ -126,6 +139,7 @@ export function WorkProjectionClientPage() {
         client_id: cid,
         milestone_name: selectedMilestone,
         completion_date: completionDate,
+        due_date: dueDate,
         notes: notes || undefined,
         proof_image: proofFile || undefined,
       })
@@ -156,6 +170,9 @@ export function WorkProjectionClientPage() {
       setNotes('')
       setProofFile(null)
       setCompletionDate(new Date().toISOString().split('T')[0])
+      const nextWeek = new Date()
+      nextWeek.setDate(nextWeek.getDate() + 7)
+      setDueDate(nextWeek.toISOString().split('T')[0])
       if (fileInputRef.current) fileInputRef.current.value = ''
 
       await loadAll()
@@ -249,6 +266,9 @@ export function WorkProjectionClientPage() {
         send_email: false, send_whatsapp: false,
       })
       toast.push({ tone: 'success', title: 'Demand letter generated!' })
+      if (res.file_url) {
+        window.open(res.file_url, '_blank')
+      }
       await loadAll()
     } catch (e) {
       toast.push({ tone: 'error', title: e instanceof Error ? e.message : 'Failed' })
@@ -310,9 +330,10 @@ export function WorkProjectionClientPage() {
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <InfoItem label="Property Name" value={data.client.property_name || data.client.apartment_name || '—'} />
           <InfoItem label="Flat Number" value={data.client.flat_number || '—'} />
-          <InfoItem label="Total Property Amount" value={inr(data.total_property_amount)} bold />
-          <InfoItem label="Total Paid" value={inr(data.total_paid)} color="emerald" bold />
-          <InfoItem label="Total Due" value={inr(data.remaining_collectable)} color="red" bold />
+          <InfoItem label="Flat Value" value={inr(data.total_property_amount)} bold />
+          <InfoItem label={`Grand Total${gstPercent > 0 ? ` incl. ${gstPercent}% GST` : ''}`} value={inr(grandTotalAmount)} bold />
+          <InfoItem label="Total Paid (incl. GST)" value={inr(Number(data.total_paid_with_gst || data.total_paid))} color="emerald" bold />
+          <InfoItem label="Total Due incl. GST" value={inr(remainingCollectableWithGst)} color="red" bold />
           <InfoItem label="Construction Progress" value={`${pct}%`} color="orange" bold />
           <InfoItem
             label="Current Milestone"
@@ -324,8 +345,8 @@ export function WorkProjectionClientPage() {
           />
           {lastPayment && (
             <InfoItem
-              label="Last Payment"
-              value={`${inr(lastPayment.amount)} on ${new Date(lastPayment.payment_date).toLocaleDateString('en-IN')}`}
+              label="Last Payment (incl. GST)"
+              value={`${inr(Number(lastPayment.amount || 0) + Number(lastPayment.gst_amount || 0))} on ${new Date(lastPayment.payment_date).toLocaleDateString('en-IN')}`}
               color="emerald"
             />
           )}
@@ -362,11 +383,13 @@ export function WorkProjectionClientPage() {
         </div>
 
         {/* Financial Summary Row */}
-        <div className="mt-5 grid gap-3 sm:grid-cols-4">
-          <MiniCard label="Property Value" value={inr(data.total_property_amount)} />
-          <MiniCard label="Due Generated" value={inr(data.total_due_generated)} color="orange" />
-          <MiniCard label="Amount Paid" value={inr(data.total_paid)} color="emerald" />
-          <MiniCard label="Collectable" value={inr(data.remaining_collectable)} color="red" />
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+          <MiniCard label="Flat Value" value={inr(data.total_property_amount)} />
+          <MiniCard label="Grand Total incl. GST" value={inr(grandTotalAmount)} />
+          <MiniCard label="Due Generated" value={inr(totalDueGeneratedWithGst)} color="orange" />
+          <MiniCard label="Amount Paid (incl. GST)" value={inr(Number(data.total_paid_with_gst || data.total_paid))} color="emerald" />
+          <MiniCard label="Collectable incl. GST" value={inr(remainingCollectableWithGst)} color="red" />
+          <MiniCard label="Advance Payment" value={inr(data.advance_payment || 0)} color={data.advance_payment && data.advance_payment > 0 ? 'emerald' : 'slate'} />
         </div>
       </PortalCard>
 
@@ -422,6 +445,19 @@ export function WorkProjectionClientPage() {
               />
             </div>
 
+            {/* Due Date */}
+            <div>
+              <label className="text-sm font-bold uppercase tracking-wider text-slate-500">
+                Payment Due Date <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="date"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+                className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-base font-medium text-slate-900 shadow-sm outline-none ring-orange-400/25 transition focus:border-orange-400 focus:ring-4"
+              />
+            </div>
+
             {/* Upload Site Image */}
             <div>
               <label className="text-sm font-bold uppercase tracking-wider text-slate-500">Upload Site Image</label>
@@ -473,13 +509,13 @@ export function WorkProjectionClientPage() {
                 <div>
                   <span className="text-slate-400">New Total Due:</span>
                   <span className="ml-2 font-extrabold text-orange-700">
-                    {inr((data.total_property_amount * (pct + selectedDef.milestone_percentage)) / 100)}
+                    {inr(((data.total_property_amount * (pct + selectedDef.milestone_percentage)) / 100) * (1 + gstPercent / 100))}
                   </span>
                 </div>
                 <div>
                   <span className="text-slate-400">This Milestone Due:</span>
                   <span className="ml-2 font-extrabold text-slate-800">
-                    {inr((data.total_property_amount * selectedDef.milestone_percentage) / 100)}
+                    {inr(((data.total_property_amount * selectedDef.milestone_percentage) / 100) * (1 + gstPercent / 100))}
                   </span>
                 </div>
               </div>
@@ -498,12 +534,26 @@ export function WorkProjectionClientPage() {
 
       {/* ═══ 4. GENERATED DUE DETAILS ═══ */}
       <CollapsibleSection title="Generated Due Details" icon={<FileText className="h-5 w-5 text-orange-500" />} open={dueOpen} onToggle={() => setDueOpen(o => !o)}>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 mb-4">
-          <MiniCard label="Total Due Generated" value={inr(data.total_due_generated)} color="orange" />
-          <MiniCard label="Total Paid" value={inr(data.total_paid)} color="emerald" />
-          <MiniCard label="Pending Collection" value={inr(data.remaining_collectable)} color="red" />
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 mb-4">
+          <MiniCard label="Base Due Generated" value={inr(data.total_due_generated)} color="orange" />
+          <MiniCard label="GST on Due" value={inr(data.total_due_generated_gst || 0)} color="orange" />
+          <MiniCard label="Total Due (incl. GST)" value={inr(totalDueGeneratedWithGst)} color="orange" />
+          <MiniCard label="Total Paid (incl. GST)" value={inr(Number(data.total_paid_with_gst || data.total_paid))} color="emerald" />
           <MiniCard label="Due Status" value={data.remaining_collectable > 0 ? 'Payment Pending' : 'All Clear'} color={data.remaining_collectable > 0 ? 'red' : 'emerald'} />
+          <MiniCard label="Advance Payment" value={inr(data.advance_payment || 0)} color={data.advance_payment && data.advance_payment > 0 ? 'emerald' : 'slate'} />
         </div>
+
+        {scheduleCombinedDue > 0 && (
+          <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+            Previous due: <strong>{inr(scheduleCarryOver)}</strong>
+            {scheduleNextStageAmount > 0 && (
+              <> + Current installment: <strong>{inr(scheduleNextStageAmount)}</strong></>
+            )}
+            {scheduleNextInstallment > 0 && (
+              <> = <strong>{inr(scheduleNextInstallment)}</strong></>
+            )}
+          </div>
+        )}
 
         {/* Action Buttons */}
         <div className="flex flex-wrap gap-3">

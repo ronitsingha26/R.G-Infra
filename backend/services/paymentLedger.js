@@ -128,7 +128,11 @@ export async function ensurePaymentSchedule(clientId, queryRunner = pool) {
 
 export async function recalculateDues(clientId, queryRunner = pool) {
   const [schedules] = await queryRunner.query(
-    'SELECT * FROM payment_schedules WHERE client_id = ? ORDER BY stage_order ASC, id ASC',
+    `SELECT ps.*, wp.id as wp_id 
+     FROM payment_schedules ps 
+     LEFT JOIN work_projections wp ON wp.client_id = ps.client_id AND wp.milestone_name = ps.stage_name AND wp.status = 'completed'
+     WHERE ps.client_id = ? 
+     ORDER BY CASE WHEN wp.id IS NOT NULL THEN 0 ELSE 1 END, ps.stage_order ASC, ps.id ASC`,
     [clientId]
   );
   if (schedules.length === 0) return null;
@@ -192,7 +196,7 @@ export async function recalculateDues(clientId, queryRunner = pool) {
          WHERE id = ?`,
         [paidHere, dueHere, latestPaymentDate, schedule.id]
       );
-      currentStage = { ...schedule, paid_amount: paidHere, due_amount: dueHere, paid_date: latestPaymentDate };
+      currentStage = { ...schedule, status: 'partial', paid_amount: paidHere, due_amount: dueHere, paid_date: latestPaymentDate };
       currentScheduleId = schedule.id;
       if (i + 1 < schedules.length) nextStage = schedules[i + 1];
     } else {
@@ -203,7 +207,7 @@ export async function recalculateDues(clientId, queryRunner = pool) {
         [stageAmount, schedule.id]
       );
       if (!currentStage) {
-        currentStage = { ...schedule, paid_amount: 0, due_amount: stageAmount, paid_date: null };
+        currentStage = { ...schedule, status: 'pending', paid_amount: 0, due_amount: stageAmount, paid_date: null };
         currentScheduleId = schedule.id;
         if (i + 1 < schedules.length) nextStage = schedules[i + 1];
       }
@@ -212,10 +216,13 @@ export async function recalculateDues(clientId, queryRunner = pool) {
 
   const currentStageDue = Number(currentStage?.due_amount || 0);
   const nextStageAmount = Number(nextStage?.amount || 0);
+  const carryOver = currentStage?.status === 'partial' ? currentStageDue : 0;
+  const nextInstallmentAmount = nextStageAmount + carryOver;
   // Future installments stay informational. "Due now" is only the current pending stage.
   const currentDue = Math.min(totalDue, currentStageDue);
-  const gstAmount = currentDue * (gstPercent / 100);
-  const totalPayable = currentDue + gstAmount;
+  const gstAmount = Math.round(currentDue * (gstPercent / 100) * 100) / 100;
+  const totalPayable = Math.round((currentDue + gstAmount) * 100) / 100;
+  const combinedDue = carryOver > 0 && nextStageAmount > 0 ? currentStageDue + nextStageAmount : currentDue;
 
   await queryRunner.query(
     `INSERT INTO dues
@@ -255,12 +262,12 @@ export async function recalculateDues(clientId, queryRunner = pool) {
       asDateOnly(currentStage?.due_date),
       nextStage?.stage_name || null,
       nextStageAmount,
-      nextStageAmount,
+      nextInstallmentAmount,
       asDateOnly(nextStage?.due_date),
       gstPercent,
       gstAmount,
       totalPayable,
-      currentDue,
+      combinedDue,
     ]
   );
 
@@ -275,11 +282,11 @@ export async function recalculateDues(clientId, queryRunner = pool) {
     current_due_date: currentStage?.due_date || null,
     next_stage: nextStage?.stage_name || null,
     next_stage_amount: nextStageAmount,
-    next_installment_amount: nextStageAmount,
+    next_installment_amount: nextInstallmentAmount,
     next_due_date: nextStage?.due_date || null,
     gst_percent: gstPercent,
     gst_amount: gstAmount,
     total_payable: totalPayable,
-    combined_due: currentDue,
+    combined_due: combinedDue,
   };
 }

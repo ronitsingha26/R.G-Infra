@@ -28,6 +28,14 @@ function parkingCodeFromFlat(flatNumber?: string | number | null, prefix = 'P') 
   return normalized ? `${prefix}${normalized}` : ''
 }
 
+function normalizePan(value: string) {
+  return value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 10)
+}
+
+function normalizeAadhaar(value: string) {
+  return value.replace(/\D/g, '').slice(0, 12)
+}
+
 export function ClientsPage() {
   const store = usePortalStore()
   const toast = usePortalToast()
@@ -230,8 +238,18 @@ export function ClientsPage() {
             <Input label="Client Name" value={form.name} onChange={(v) => setForm((s) => ({ ...s, name: v }))} required />
             <Input label="Phone" value={form.phone} onChange={(v) => setForm((s) => ({ ...s, phone: v }))} />
             <Input label="Email" value={form.email} onChange={(v) => setForm((s) => ({ ...s, email: v }))} type="email" />
-            <Input label="PAN" value={form.pan_number} onChange={(v) => setForm((s) => ({ ...s, pan_number: v }))} />
-            <Input label="Aadhaar" value={form.aadhaar_number} onChange={(v) => setForm((s) => ({ ...s, aadhaar_number: v }))} />
+            <Input
+              label="PAN"
+              value={form.pan_number}
+              onChange={(v) => setForm((s) => ({ ...s, pan_number: normalizePan(v) }))}
+              placeholder="10 characters"
+            />
+            <Input
+              label="Aadhaar"
+              value={form.aadhaar_number}
+              onChange={(v) => setForm((s) => ({ ...s, aadhaar_number: normalizeAadhaar(v) }))}
+              placeholder="12 digits"
+            />
             <Input label="Purchase Date" value={form.purchase_date} onChange={(v) => setForm((s) => ({ ...s, purchase_date: v }))} type="date" />
           </div>
           <div className="mt-3">

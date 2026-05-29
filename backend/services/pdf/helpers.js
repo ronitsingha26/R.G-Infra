@@ -41,18 +41,24 @@ export function cleanText(value, fallback = '-') {
 }
 
 export function formatCurrency(value, options = {}) {
-  const { decimals = 0, symbol = 'Rs. ', suffix = '/-' } = options;
-  const amount = Number(value || 0).toLocaleString('en-IN', {
+  const num = Number(value || 0);
+  const isInteger = Number.isInteger(num);
+  const defaultDecimals = isInteger ? 0 : 2;
+  const { decimals = defaultDecimals, symbol = 'Rs. ', suffix = '/-' } = options;
+  const amount = num.toLocaleString('en-IN', {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   });
   return `${symbol}${amount}${suffix}`;
 }
 
-export function formatNumber(value, decimals = 0) {
-  return Number(value || 0).toLocaleString('en-IN', {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
+export function formatNumber(value, decimals) {
+  const num = Number(value || 0);
+  const isInteger = Number.isInteger(num);
+  const finalDecimals = decimals !== undefined ? decimals : (isInteger ? 0 : 2);
+  return num.toLocaleString('en-IN', {
+    minimumFractionDigits: finalDecimals,
+    maximumFractionDigits: finalDecimals,
   });
 }
 
@@ -70,15 +76,18 @@ export function formatPercent(value) {
 }
 
 export function amountInWords(amount) {
-  const n = Math.round(Number(amount || 0));
-  if (n === 0) return 'Rupees Zero only';
+  const num = Number(amount || 0);
+  const n = Math.floor(num);
+  const paise = Math.round((num - n) * 100);
+
+  if (n === 0 && paise === 0) return 'Rupees Zero only';
 
   const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
   const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
-  const underHundred = (num) => (num < 20 ? ones[num] : `${tens[Math.floor(num / 10)]}${num % 10 ? ` ${ones[num % 10]}` : ''}`);
-  const underThousand = (num) => {
-    const hundred = Math.floor(num / 100);
-    const rest = num % 100;
+  const underHundred = (val) => (val < 20 ? ones[val] : `${tens[Math.floor(val / 10)]}${val % 10 ? ` ${ones[val % 10]}` : ''}`);
+  const underThousand = (val) => {
+    const hundred = Math.floor(val / 100);
+    const rest = val % 100;
     return `${hundred ? `${ones[hundred]} Hundred` : ''}${hundred && rest ? ' ' : ''}${rest ? underHundred(rest) : ''}`;
   };
 
@@ -93,7 +102,14 @@ export function amountInWords(amount) {
   if (thousand) parts.push(`${underThousand(thousand)} Thousand`);
   if (rest) parts.push(underThousand(rest));
 
-  return `Rupees ${parts.join(' ')} only`;
+  let rupeesText = parts.length > 0 ? `Rupees ${parts.join(' ')}` : '';
+  let paiseText = paise > 0 ? ` and ${underHundred(paise)} Paise` : '';
+
+  if (rupeesText === '' && paiseText !== '') {
+    return `${underHundred(paise)} Paise only`;
+  }
+
+  return `${rupeesText}${paiseText} only`;
 }
 
 export function toAddressLines(address) {

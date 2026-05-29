@@ -154,6 +154,9 @@ export function getDemandLetterHTML(data) {
   const milestoneAmount = Number(stageAmount || dueAmount || 0);
   const nextAmount = Number(nextStageAmount || 0);
   const gst = Number(gstAmount || 0);
+  const paidAmt = Number(paidAmount || 0);
+  const paidAmtWithGst = Number(data.paidAmountWithGst || paidAmt);
+  const paidGstAmount = paidAmtWithGst - paidAmt;
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -361,14 +364,22 @@ export function getDemandLetterHTML(data) {
         We would like to bring to your kind notice that the construction work of the above stated flat,
         which is booked in your name for a total consideration of
         <span class="amount">Rs. ${formatCurrency(totalAmount)}/-</span>
-        (${escapeHtml(rupeesWords(totalAmount))}), has reached ${escapeHtml(stageText)}.
+        (${escapeHtml(rupeesWords(totalAmount))})${gstPercent > 0 ? ` plus GST (${formatPercent(gstPercent)}%) of
+        <span class="amount">Rs. ${formatCurrency(totalAmount * gstPercent / 100)}/-</span>
+        (${escapeHtml(rupeesWords(totalAmount * gstPercent / 100))}) = Total
+        <span class="amount">Rs. ${formatCurrency(totalAmount + (totalAmount * gstPercent / 100))}/-</span>
+        (${escapeHtml(rupeesWords(totalAmount + (totalAmount * gstPercent / 100)))})` : ''}, has reached ${escapeHtml(stageText)}.
       </p>
       <p>
         As per our agreement and payment schedule, an amount of
         <span class="amount">Rs. ${formatCurrency(milestoneAmount)}/-</span>
         (${escapeHtml(rupeesWords(milestoneAmount))}) is due (${formatPercent(duePct)}%). We have received till date
         <span class="amount">Rs. ${formatCurrency(paidAmount)}/-</span>
-        (${escapeHtml(rupeesWords(paidAmount))}) (${formatPercent(paidPct)}%). The balance payable for the present demand is
+        (${escapeHtml(rupeesWords(paidAmount))})${paidGstAmount > 0 ? ` plus GST 
+        <span class="amount">Rs. ${formatCurrency(paidGstAmount)}/-</span>
+        (${escapeHtml(rupeesWords(paidGstAmount))}) = Total
+        <span class="amount">Rs. ${formatCurrency(paidAmtWithGst)}/-</span>
+        (${escapeHtml(rupeesWords(paidAmtWithGst))})` : ''} (${formatPercent(paidPct)}%). The balance payable for the present demand is
         <span class="amount">Rs. ${formatCurrency(dueAmount)}/-</span>
         (${escapeHtml(rupeesWords(dueAmount))})${gst > 0 ? ` plus GST (${formatPercent(gstPercent)}%) of
         <span class="amount">Rs. ${formatCurrency(gstAmount)}/-</span>
@@ -389,10 +400,20 @@ export function getDemandLetterHTML(data) {
             <td>Total consideration</td>
             <td class="right">Rs. ${formatCurrency(totalAmount)}/-</td>
           </tr>
+          ${gstPercent > 0 ? `
+          <tr>
+            <td>Total consideration with GST (${formatPercent(gstPercent)}%)</td>
+            <td class="right">Rs. ${formatCurrency(totalAmount + (totalAmount * gstPercent / 100))}/-</td>
+          </tr>` : ''}
           <tr>
             <td>Received till date</td>
             <td class="right">Rs. ${formatCurrency(paidAmount)}/-</td>
           </tr>
+          ${gstPercent > 0 && paidGstAmount > 0 ? `
+          <tr>
+            <td>Received till date with GST</td>
+            <td class="right">Rs. ${formatCurrency(paidAmtWithGst)}/-</td>
+          </tr>` : ''}
           <tr>
             <td>Current stage demand</td>
             <td class="right">Rs. ${formatCurrency(milestoneAmount)}/-</td>

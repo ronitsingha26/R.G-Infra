@@ -41,6 +41,9 @@ export function ClientDetailPage() {
     return { pan, aadhaar }
   }
 
+  const normalizePan = (value: string) => value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 10)
+  const normalizeAadhaar = (value: string) => value.replace(/\D/g, '').slice(0, 12)
+
   const [client, setClient] = useState<Client | null>(null)
   const [loading, setLoading] = useState(true)
   const [editOpen, setEditOpen] = useState(false)
@@ -246,8 +249,8 @@ export function ClientDetailPage() {
           <Input label="Name" value={form.name} onChange={(v) => setForm((s) => ({ ...s, name: v }))} required />
           <Input label="Phone" value={form.phone} onChange={(v) => setForm((s) => ({ ...s, phone: v }))} />
           <Input label="Email" value={form.email} onChange={(v) => setForm((s) => ({ ...s, email: v }))} type="email" />
-          <Input label="PAN" value={form.pan} onChange={(v) => setForm((s) => ({ ...s, pan: v }))} />
-          <Input label="Aadhaar" value={form.aadhaar} onChange={(v) => setForm((s) => ({ ...s, aadhaar: v }))} />
+          <Input label="PAN" value={form.pan} onChange={(v) => setForm((s) => ({ ...s, pan: normalizePan(v) }))} placeholder="10 characters" />
+          <Input label="Aadhaar" value={form.aadhaar} onChange={(v) => setForm((s) => ({ ...s, aadhaar: normalizeAadhaar(v) }))} placeholder="12 digits" />
           <Input label="Purchase Date" value={form.purchase_date} onChange={(v) => setForm((s) => ({ ...s, purchase_date: v }))} type="date" />
         </div>
         <div className="mt-4">

@@ -5,7 +5,8 @@ import { fileURLToPath } from 'url';
 import { existsSync, mkdirSync } from 'fs';
 import pool from '../config/db.js';
 import { verifyToken } from '../middleware/auth.js';
-import { recalculateDues } from '../services/paymentLedger.js';
+import { recalculateDues, ensurePaymentSchedule } from '../services/paymentLedger.js';
+import { syncDueReminders } from '../services/dueReminderSync.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -98,7 +99,15 @@ router.get('/summary/:clientId', verifyToken, async (req, res) => {
     const [clientRows] = await pool.query(`
       SELECT
         c.id, c.unique_client_id, c.name, c.phone, c.email,
-        f.flat_number, f.total_amount, f.floor, f.block,
+        f.flat_number, f.total_amount,
+        COALESCE(NULLIF(f.gst_percent, 0), (
+          SELECT pp.gst_percent
+          FROM payment_plans pp
+          WHERE pp.apartment_id = a.id AND pp.is_active = TRUE
+          ORDER BY pp.id DESC
+          LIMIT 1
+        ), 0) AS flat_gst_percent,
+        f.floor, f.block,
         a.name AS apartment_name,
         p.name AS property_name
       FROM clients c
@@ -114,6 +123,7 @@ router.get('/summary/:clientId', verifyToken, async (req, res) => {
 
     const client = clientRows[0];
     const totalAmount = Number(client.total_amount || 0);
+    const gstPercent = Number(client.flat_gst_percent || 0);
 
     // Get completed milestones
     const [milestones] = await pool.query(
@@ -123,15 +133,21 @@ router.get('/summary/:clientId', verifyToken, async (req, res) => {
 
     // Get total paid from client_payments
     const [paidRows] = await pool.query(
-      'SELECT COALESCE(SUM(amount), 0) AS total_paid FROM client_payments WHERE client_id = ?',
+      'SELECT COALESCE(SUM(amount), 0) AS total_paid, COALESCE(SUM(gst_amount), 0) AS total_paid_gst FROM client_payments WHERE client_id = ?',
       [clientId]
     );
 
     const totalPaid = Number(paidRows[0].total_paid || 0);
+    const totalPaidGst = Number(paidRows[0].total_paid_gst || 0);
+    const totalPaidWithGst = totalPaid + totalPaidGst;
     const completedMilestones = milestones.filter(m => m.status === 'completed');
     const totalCompletedPercentage = completedMilestones.reduce((sum, m) => sum + Number(m.milestone_percentage), 0);
     const totalDueGenerated = (totalAmount * totalCompletedPercentage) / 100;
+    const dueGstAmount = totalDueGenerated * (gstPercent / 100);
+    const grandTotalAmount = totalAmount + (totalAmount * gstPercent / 100);
+    const totalDueGeneratedWithGst = totalDueGenerated + dueGstAmount;
     const remainingCollectable = totalDueGenerated - totalPaid;
+    const overallRemainingWithGst = Math.max(0, grandTotalAmount - totalPaidWithGst);
     const totalPendingPercentage = 100 - totalCompletedPercentage;
 
     const MILESTONES = await getMilestones();
@@ -167,6 +183,18 @@ router.get('/summary/:clientId', verifyToken, async (req, res) => {
       ? completedMilestones[completedMilestones.length - 1].updated_at
       : null;
 
+    let scheduleDue = null;
+    try {
+      scheduleDue = await ensurePaymentSchedule(clientId);
+    } catch (err) {
+      scheduleDue = null;
+    }
+
+    const scheduleCombined = Number(scheduleDue?.combined_due || 0);
+    const scheduleNext = Number(scheduleDue?.next_stage_amount || 0);
+    const scheduleNextInstallment = Number(scheduleDue?.next_installment_amount || scheduleNext || 0);
+    const scheduleCarryOver = Math.max(0, scheduleNextInstallment - scheduleNext);
+
     res.json({
       client: {
         id: client.id,
@@ -181,13 +209,29 @@ router.get('/summary/:clientId', verifyToken, async (req, res) => {
         block: client.block || '',
       },
       total_property_amount: totalAmount,
+      gst_percent: gstPercent,
+      gst_amount: totalAmount * gstPercent / 100,
+      grand_total_amount: grandTotalAmount,
       total_paid: totalPaid,
       total_completed_percentage: totalCompletedPercentage,
       total_due_generated: totalDueGenerated,
+      total_due_generated_gst: dueGstAmount,
+      total_due_generated_with_gst: totalDueGeneratedWithGst,
       remaining_collectable: Math.max(0, remainingCollectable),
+      remaining_collectable_gst: Math.max(0, remainingCollectable * (gstPercent / 100)),
+      remaining_collectable_with_gst: overallRemainingWithGst,
+      total_paid_with_gst: totalPaidWithGst,
+      advance_payment: Math.max(0, Math.round((totalPaidWithGst - totalDueGeneratedWithGst) * 100) / 100),
       total_pending_percentage: totalPendingPercentage,
       milestones: allMilestones,
       last_updated: lastCompleted,
+      schedule_current_stage: scheduleDue?.current_stage || null,
+      schedule_next_stage: scheduleDue?.next_stage || null,
+      schedule_current_due: scheduleDue?.current_due ?? scheduleDue?.current_stage_due ?? null,
+      schedule_next_stage_amount: scheduleNext || null,
+      schedule_next_installment_amount: scheduleNextInstallment || null,
+      schedule_carry_over: scheduleCarryOver || null,
+      schedule_combined_due: scheduleCombined || null,
     });
   } catch (err) {
     console.error('Get work projection summary error:', err);
@@ -212,7 +256,7 @@ router.get('/:clientId', verifyToken, async (req, res) => {
 // ─── POST /api/work-projection — Add a completed milestone ─────────────────
 router.post('/', verifyToken, upload.single('proof_image'), async (req, res) => {
   try {
-    const { client_id, milestone_name, completion_date, notes } = req.body;
+    const { client_id, milestone_name, completion_date, due_date, notes } = req.body;
 
     if (!client_id || !milestone_name) {
       return res.status(400).json({ error: 'client_id and milestone_name are required' });
@@ -247,16 +291,25 @@ router.post('/', verifyToken, upload.single('proof_image'), async (req, res) => 
 
     // Get client's flat_id and total amount
     const [clientRows] = await pool.query(`
-      SELECT c.flat_id, b.id as booking_id, COALESCE(b.flat_value, f.total_amount, 0) as total_amount
+      SELECT c.flat_id, b.id as booking_id, COALESCE(b.flat_value, f.total_amount, 0) as total_amount,
+        COALESCE(NULLIF(f.gst_percent, 0), (
+          SELECT pp.gst_percent
+          FROM payment_plans pp
+          WHERE pp.apartment_id = a.id AND pp.is_active = TRUE
+          ORDER BY pp.id DESC
+          LIMIT 1
+        ), 0) AS gst_percent
       FROM clients c
       LEFT JOIN bookings b ON b.client_id = c.id AND b.status = 'active'
       LEFT JOIN flats f ON c.flat_id = f.id
+      LEFT JOIN apartments a ON f.apartment_id = a.id
       WHERE c.id = ?
     `, [client_id]);
     
     const flatId = clientRows.length > 0 ? clientRows[0].flat_id : null;
     const bookingId = clientRows.length > 0 ? clientRows[0].booking_id : null;
     const totalAmount = clientRows.length > 0 ? Number(clientRows[0].total_amount) : 0;
+    const gstPercent = clientRows.length > 0 ? Number(clientRows[0].gst_percent || 0) : 0;
 
     // Handle proof image
     const proofImage = req.file ? `/uploads/work-projection/${req.file.filename}` : null;
@@ -283,15 +336,17 @@ router.post('/', verifyToken, upload.single('proof_image'), async (req, res) => 
       if (existingSchedule.length === 0) {
         const [maxOrder] = await pool.query('SELECT MAX(stage_order) as max_order FROM payment_schedules WHERE client_id = ?', [client_id]);
         const nextOrder = (maxOrder[0].max_order || 0) + 1;
+        const gstAmount = amount * (gstPercent / 100);
         await pool.query(
-          `INSERT INTO payment_schedules (client_id, flat_id, booking_id, stage_order, stage_name, percentage, amount, due_amount, status, due_date)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
-          [client_id, flatId, bookingId, nextOrder, milestone_name, milestoneDef.percentage, amount, amount, completion_date || new Date().toISOString().split('T')[0]]
+          `INSERT INTO payment_schedules (client_id, flat_id, booking_id, stage_order, stage_name, percentage, amount, gst_amount, due_amount, status, due_date)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
+          [client_id, flatId, bookingId, nextOrder, milestone_name, milestoneDef.percentage, amount, gstAmount, amount, due_date || completion_date || new Date().toISOString().split('T')[0]]
         );
       }
     }
     
     await recalculateDues(client_id, pool);
+    await syncDueReminders(Number(client_id), pool);
 
     const [inserted] = await pool.query('SELECT * FROM work_projections WHERE id = ?', [result.insertId]);
 
@@ -335,6 +390,15 @@ router.put('/:id', verifyToken, upload.single('proof_image'), async (req, res) =
       ]
     );
 
+    await pool.query(
+      `UPDATE payment_schedules
+       SET due_date = ?
+       WHERE client_id = ? AND stage_name = ? AND status != 'paid'`,
+      [completion_date || existing[0].completion_date, existing[0].client_id, existing[0].milestone_name]
+    );
+    await recalculateDues(existing[0].client_id, pool);
+    await syncDueReminders(existing[0].client_id, pool);
+
     const [updated] = await pool.query('SELECT * FROM work_projections WHERE id = ?', [id]);
 
     req.app.get('io')?.emit('data_changed', { type: 'work_projection_updated', data: { client_id: existing[0].client_id } });
@@ -365,6 +429,7 @@ router.delete('/:id', verifyToken, async (req, res) => {
     );
 
     await recalculateDues(existing[0].client_id, pool);
+    await syncDueReminders(existing[0].client_id, pool);
 
     req.app.get('io')?.emit('data_changed', { type: 'work_projection_updated', data: { client_id: existing[0].client_id } });
 

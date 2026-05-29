@@ -14,6 +14,20 @@ function parkingCodeFromFlat(flatNumber, prefix = 'P') {
   return normalized ? `${prefix}${normalized}` : null;
 }
 
+function normalizePan(value) {
+  return String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10);
+}
+
+function normalizeAadhaar(value) {
+  return String(value || '').replace(/\D/g, '').slice(0, 12);
+}
+
+function validateIds(pan, aadhaar) {
+  if (pan && pan.length !== 10) return 'PAN must be exactly 10 characters';
+  if (aadhaar && aadhaar.length !== 12) return 'Aadhaar must be exactly 12 digits';
+  return null;
+}
+
 // GET /api/clients
 router.get('/', verifyToken, async (req, res) => {
   try {
@@ -165,6 +179,13 @@ router.post('/', verifyToken, async (req, res) => {
       return res.status(400).json({ error: 'Name and flat_id are required' });
     }
 
+    const normalizedPan = normalizePan(pan_number);
+    const normalizedAadhaar = normalizeAadhaar(aadhaar_number);
+    const idError = validateIds(normalizedPan, normalizedAadhaar);
+    if (idError) {
+      return res.status(400).json({ error: idError });
+    }
+
     await connection.beginTransaction();
 
     // 1. Check flat availability
@@ -202,7 +223,7 @@ router.post('/', verifyToken, async (req, res) => {
     const booking_id = makeBookingId(nextId);
 
     // 3. Insert Client
-    const combinedPanAadhaar = pan_aadhaar || [pan_number, aadhaar_number].filter(Boolean).join(' / ') || null;
+    const combinedPanAadhaar = pan_aadhaar || [normalizedPan, normalizedAadhaar].filter(Boolean).join(' / ') || null;
     const [clientResult] = await connection.query(
       'INSERT INTO clients (unique_client_id, name, phone, email, address, pan_aadhaar, pan_number, aadhaar_number, purchase_date, flat_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [
@@ -212,8 +233,8 @@ router.post('/', verifyToken, async (req, res) => {
         email || null,
         address || null,
         combinedPanAadhaar,
-        pan_number || null,
-        aadhaar_number || null,
+        normalizedPan || null,
+        normalizedAadhaar || null,
         purchase_date || null,
         flat_id,
       ]
@@ -320,6 +341,13 @@ router.put('/:id', verifyToken, async (req, res) => {
       extra_parking_allotment, extra_vehicle_type, extra_parking_count, extra_parking_slot_no, extra_parking_charge,
       transformer_apartment, transformer_flat, corpus_fund, electricity_board_source, water_connection_details
     } = req.body;
+
+    const normalizedPan = normalizePan(pan_number);
+    const normalizedAadhaar = normalizeAadhaar(aadhaar_number);
+    const idError = validateIds(normalizedPan, normalizedAadhaar);
+    if (idError) {
+      return res.status(400).json({ error: idError });
+    }
 
     await connection.beginTransaction();
 
@@ -430,7 +458,7 @@ router.put('/:id', verifyToken, async (req, res) => {
     }
 
     // Update Client
-    const combinedPanAadhaar = pan_aadhaar || [pan_number, aadhaar_number].filter(Boolean).join(' / ') || null;
+    const combinedPanAadhaar = pan_aadhaar || [normalizedPan, normalizedAadhaar].filter(Boolean).join(' / ') || null;
     await connection.query(
       'UPDATE clients SET name = ?, phone = ?, email = ?, address = ?, pan_aadhaar = ?, pan_number = ?, aadhaar_number = ?, purchase_date = ?, flat_id = ? WHERE id = ?',
       [
@@ -439,8 +467,8 @@ router.put('/:id', verifyToken, async (req, res) => {
         email || null,
         address || null,
         combinedPanAadhaar,
-        pan_number || null,
-        aadhaar_number || null,
+        normalizedPan || null,
+        normalizedAadhaar || null,
         purchase_date || null,
         flat_id || oldFlatId,
         req.params.id,

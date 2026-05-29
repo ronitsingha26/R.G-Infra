@@ -316,7 +316,9 @@ export function PaymentSchedulePage() {
           <div className="space-y-3">
             {filteredDues.map((due) => {
               const currentDue = Number(due.current_due ?? due.current_stage_due ?? due.combined_due ?? 0)
+              const baseNext = Number(due.next_stage_amount ?? 0)
               const nextInstallment = Number(due.next_installment_amount ?? due.next_stage_amount ?? 0)
+              const carryOver = Math.max(0, nextInstallment - baseNext)
               const gstAmount = Number(due.gst_amount || 0)
               const totalPayable = Number(due.total_payable ?? currentDue + gstAmount)
 
@@ -343,6 +345,9 @@ export function PaymentSchedulePage() {
                         <div className="text-xs font-semibold text-slate-400">Next Installment</div>
                         <div className="font-bold text-slate-800">{due.next_stage_name || 'No upcoming stage'}</div>
                         {nextInstallment > 0 && <div className="text-xs text-slate-500">{inr(nextInstallment)}</div>}
+                        {carryOver > 0 && (
+                          <div className="text-[11px] text-amber-600 font-semibold">Includes previous due {inr(carryOver)}</div>
+                        )}
                         {due.next_due_date && <div className="text-xs text-slate-500">Due on {new Date(due.next_due_date).toLocaleDateString('en-IN')}</div>}
                       </div>
                       <div>

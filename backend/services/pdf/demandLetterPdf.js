@@ -1,4 +1,6 @@
 import { writeFile } from 'fs/promises';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import {
   amountInWords,
   cleanText,
@@ -16,6 +18,10 @@ import {
   toAddressLines,
 } from './helpers.js';
 import { BRAND, pdfStyles, tableLayouts } from './styles.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const DEFAULT_SIGNATURE_PATH = join(__dirname, '../../assets/signature.png');
 
 function header() {
   return {
@@ -59,11 +65,14 @@ function header() {
 export function buildDemandLetterDocDefinition(data = {}) {
   const bank = { ...DEFAULT_BANK_DETAILS, ...(data.bankDetails || {}) };
   const land = { ...DEFAULT_BOUNDARIES, ...(data.landBoundaries || {}) };
-  const floorBounds = { ...DEFAULT_BOUNDARIES, ...(data.floorBoundaries || {}) };
   const totalAmount = Number(data.totalAmount || 0);
   const paidAmount = Number(data.paidAmount || 0);
+  const paidAmountWithGst = Number(data.paidAmountWithGst || paidAmount);
+  const paidGstAmount = paidAmountWithGst - paidAmount;
   const dueAmount = Number(data.dueAmount || 0);
   const gstPercent = Number(data.gstPercent || 0);
+  const totalGstAmount = (totalAmount * gstPercent) / 100;
+  const totalAmountWithGst = totalAmount + totalGstAmount;
   const gstAmount = Number(data.gstAmount || 0);
   const grandTotal = Number(data.grandTotal || dueAmount + gstAmount);
   const milestoneAmount = Number(data.stageAmount || dueAmount || 0);
@@ -83,12 +92,25 @@ export function buildDemandLetterDocDefinition(data = {}) {
     data.apartmentName ? `in ${data.apartmentName}` : null,
   ].filter(Boolean).join(', ');
 
+  // Use provided signature, else fall back to the assets/signature.png
+  const sigPath = data.signatureImage || DEFAULT_SIGNATURE_PATH;
+
   const summaryRows = [
     [{ text: 'Total consideration' }, { text: formatCurrency(totalAmount), alignment: 'right' }],
-    [{ text: 'Received till date' }, { text: formatCurrency(paidAmount), alignment: 'right' }],
-    [{ text: 'Current stage demand' }, { text: formatCurrency(milestoneAmount), alignment: 'right' }],
-    [{ text: 'Balance payable for present demand' }, { text: formatCurrency(dueAmount), alignment: 'right' }],
   ];
+  if (gstPercent > 0) {
+    summaryRows.push([{ text: `Total consideration with GST (${formatPercent(gstPercent)}%)` }, { text: formatCurrency(totalAmountWithGst), alignment: 'right' }]);
+  }
+  summaryRows.push(
+    [{ text: 'Received till date' }, { text: formatCurrency(paidAmount), alignment: 'right' }]
+  );
+  if (gstPercent > 0 && paidGstAmount > 0) {
+    summaryRows.push([{ text: `Received till date with GST` }, { text: formatCurrency(paidAmountWithGst), alignment: 'right' }]);
+  }
+  summaryRows.push(
+    [{ text: 'Current stage demand' }, { text: formatCurrency(milestoneAmount), alignment: 'right' }],
+    [{ text: 'Balance payable for present demand' }, { text: formatCurrency(dueAmount), alignment: 'right' }]
+  );
   if (gstAmount > 0) {
     summaryRows.push([{ text: `GST (${formatPercent(gstPercent)}%)` }, { text: formatCurrency(gstAmount), alignment: 'right' }]);
   }
@@ -124,6 +146,7 @@ export function buildDemandLetterDocDefinition(data = {}) {
       ],
     }),
     content: [
+      // ── PAGE 1: Demand Letter ──────────────────────────────────────────
       header(),
       { text: 'DEMAND LETTER', style: 'title' },
       {
@@ -152,7 +175,15 @@ export function buildDemandLetterDocDefinition(data = {}) {
         text: [
           'We would like to bring to your kind notice that the construction work of the above stated flat, which is booked in your name for a total consideration of ',
           { text: formatCurrency(totalAmount), bold: true },
-          ` (${amountInWords(totalAmount)}), has reached ${stageText}.`,
+          ` (${amountInWords(totalAmount)})`,
+          ...(gstPercent > 0 ? [
+             ` plus GST (${formatPercent(gstPercent)}%) `,
+             { text: formatCurrency(totalGstAmount), bold: true },
+             ` (${amountInWords(totalGstAmount)}) = Total `,
+             { text: formatCurrency(totalAmountWithGst), bold: true },
+             ` (${amountInWords(totalAmountWithGst)})`
+          ] : []),
+          `, has reached ${stageText}.`,
         ],
         style: 'paragraph',
       },
@@ -162,7 +193,15 @@ export function buildDemandLetterDocDefinition(data = {}) {
           { text: formatCurrency(milestoneAmount), bold: true },
           ` (${amountInWords(milestoneAmount)}) is due (${formatPercent(duePct)}%). We have received till date `,
           { text: formatCurrency(paidAmount), bold: true },
-          ` (${amountInWords(paidAmount)}) (${formatPercent(paidPct)}%). The balance payable for the present demand is `,
+          ` (${amountInWords(paidAmount)})`,
+          ...(paidGstAmount > 0 ? [
+            ` plus GST `,
+            { text: formatCurrency(paidGstAmount), bold: true },
+            ` (${amountInWords(paidGstAmount)}) = Total `,
+            { text: formatCurrency(paidAmountWithGst), bold: true },
+            ` (${amountInWords(paidAmountWithGst)})`
+          ] : []),
+          ` (${formatPercent(paidPct)}%). The balance payable for the present demand is `,
           { text: formatCurrency(dueAmount), bold: true },
           ` (${amountInWords(dueAmount)})`,
           ...(gstAmount > 0 ? [
@@ -177,10 +216,6 @@ export function buildDemandLetterDocDefinition(data = {}) {
         style: 'paragraph',
       },
       simpleTable(['Particulars', 'Amount'], summaryRows, { widths: ['*', 145], alignments: ['left', 'right'] }),
-      sectionHeader('The Land is butted and bounded as below:'),
-      keyValueTable([['NORTH:', land.north], ['SOUTH:', land.south], ['EAST:', land.east], ['WEST:', land.west]]),
-      sectionHeader('The floor is butted and bounded as below:'),
-      keyValueTable([['NORTH:', floorBounds.north], ['SOUTH:', floorBounds.south], ['EAST:', floorBounds.east], ['WEST:', floorBounds.west]]),
       {
         text: `Hence, you are requested to make arrangement for the outstanding amount${dueDate ? ` on or before ${dueDate}` : ' within one week of receipt of this demand letter'}.`,
         style: 'paragraph',
@@ -188,6 +223,13 @@ export function buildDemandLetterDocDefinition(data = {}) {
         margin: [0, 4, 0, 10],
         border: [true, false, false, false],
       },
+
+      // ── PAGE 2: Property Boundaries + Bank Details + Signature ──────────
+      { text: '', pageBreak: 'before' },
+      header(),
+      sectionHeader('The Land is butted and bounded as below:'),
+      keyValueTable([['NORTH:', land.north], ['SOUTH:', land.south], ['EAST:', land.east], ['WEST:', land.west]]),
+      { text: '', margin: [0, 12, 0, 0] },
       sectionHeader('Our Bank details for payment:'),
       keyValueTable([
         ['Name:', bank.accountName],
@@ -200,10 +242,10 @@ export function buildDemandLetterDocDefinition(data = {}) {
         width: 230,
         stack: [
           { text: 'Thanking you,\nFor R G INFRA', fontSize: 11.5, lineHeight: 1.35 },
-          signatureNode(data.signatureImage),
+          signatureNode(sigPath),
           { text: 'Authorised Signatory', fontSize: 11.5 },
         ],
-        margin: [0, 8, 0, 0],
+        margin: [0, 16, 0, 0],
       },
     ],
   };
@@ -218,3 +260,5 @@ export async function writeDemandLetterPdf(data, filePath) {
   await writeFile(filePath, buffer);
   return buffer;
 }
+
+

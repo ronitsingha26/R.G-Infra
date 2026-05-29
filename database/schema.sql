@@ -108,8 +108,8 @@ CREATE TABLE IF NOT EXISTS clients (
   email             VARCHAR(150),
   address           TEXT,
   pan_aadhaar       VARCHAR(50),
-  pan_number        VARCHAR(20),
-  aadhaar_number    VARCHAR(20),
+  pan_number        VARCHAR(10),
+  aadhaar_number    VARCHAR(12),
   purchase_date     DATE,
   flat_id           INT,
   created_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -399,28 +399,72 @@ CREATE TABLE IF NOT EXISTS payment_stages (
 );
 
 INSERT INTO payment_stages (stage_name, percentage, stage_order, apartment_id)
-SELECT 'Booking Amount', 10.00, 1, NULL
+SELECT 'Booking', 10.00, 1, NULL
 WHERE NOT EXISTS (SELECT 1 FROM payment_stages WHERE apartment_id IS NULL AND stage_order = 1);
 
 INSERT INTO payment_stages (stage_name, percentage, stage_order, apartment_id)
-SELECT 'Agreement Signing', 20.00, 2, NULL
+SELECT 'Raft Foundation Complete', 10.00, 2, NULL
 WHERE NOT EXISTS (SELECT 1 FROM payment_stages WHERE apartment_id IS NULL AND stage_order = 2);
 
 INSERT INTO payment_stages (stage_name, percentage, stage_order, apartment_id)
-SELECT 'Plinth Level', 15.00, 3, NULL
+SELECT 'Ground Floor Slab', 5.00, 3, NULL
 WHERE NOT EXISTS (SELECT 1 FROM payment_stages WHERE apartment_id IS NULL AND stage_order = 3);
 
 INSERT INTO payment_stages (stage_name, percentage, stage_order, apartment_id)
-SELECT 'First Slab', 15.00, 4, NULL
+SELECT '1st Floor Slab', 5.00, 4, NULL
 WHERE NOT EXISTS (SELECT 1 FROM payment_stages WHERE apartment_id IS NULL AND stage_order = 4);
 
 INSERT INTO payment_stages (stage_name, percentage, stage_order, apartment_id)
-SELECT 'Brickwork & Plaster', 20.00, 5, NULL
+SELECT '2nd Floor Slab', 5.00, 5, NULL
 WHERE NOT EXISTS (SELECT 1 FROM payment_stages WHERE apartment_id IS NULL AND stage_order = 5);
 
 INSERT INTO payment_stages (stage_name, percentage, stage_order, apartment_id)
-SELECT 'Possession', 20.00, 6, NULL
+SELECT '3rd Floor Slab', 5.00, 6, NULL
 WHERE NOT EXISTS (SELECT 1 FROM payment_stages WHERE apartment_id IS NULL AND stage_order = 6);
+
+INSERT INTO payment_stages (stage_name, percentage, stage_order, apartment_id)
+SELECT '4th Floor Slab', 5.00, 7, NULL
+WHERE NOT EXISTS (SELECT 1 FROM payment_stages WHERE apartment_id IS NULL AND stage_order = 7);
+
+INSERT INTO payment_stages (stage_name, percentage, stage_order, apartment_id)
+SELECT '5th Floor Slab', 5.00, 8, NULL
+WHERE NOT EXISTS (SELECT 1 FROM payment_stages WHERE apartment_id IS NULL AND stage_order = 8);
+
+INSERT INTO payment_stages (stage_name, percentage, stage_order, apartment_id)
+SELECT '6th Floor Slab', 5.00, 9, NULL
+WHERE NOT EXISTS (SELECT 1 FROM payment_stages WHERE apartment_id IS NULL AND stage_order = 9);
+
+INSERT INTO payment_stages (stage_name, percentage, stage_order, apartment_id)
+SELECT '7th Floor Slab', 5.00, 10, NULL
+WHERE NOT EXISTS (SELECT 1 FROM payment_stages WHERE apartment_id IS NULL AND stage_order = 10);
+
+INSERT INTO payment_stages (stage_name, percentage, stage_order, apartment_id)
+SELECT '8th Floor Slab', 5.00, 11, NULL
+WHERE NOT EXISTS (SELECT 1 FROM payment_stages WHERE apartment_id IS NULL AND stage_order = 11);
+
+INSERT INTO payment_stages (stage_name, percentage, stage_order, apartment_id)
+SELECT '9th Floor Slab', 5.00, 12, NULL
+WHERE NOT EXISTS (SELECT 1 FROM payment_stages WHERE apartment_id IS NULL AND stage_order = 12);
+
+INSERT INTO payment_stages (stage_name, percentage, stage_order, apartment_id)
+SELECT '10th Floor Slab', 5.00, 13, NULL
+WHERE NOT EXISTS (SELECT 1 FROM payment_stages WHERE apartment_id IS NULL AND stage_order = 13);
+
+INSERT INTO payment_stages (stage_name, percentage, stage_order, apartment_id)
+SELECT 'Roof Slab', 5.00, 14, NULL
+WHERE NOT EXISTS (SELECT 1 FROM payment_stages WHERE apartment_id IS NULL AND stage_order = 14);
+
+INSERT INTO payment_stages (stage_name, percentage, stage_order, apartment_id)
+SELECT 'Brick Work & Plaster', 5.00, 15, NULL
+WHERE NOT EXISTS (SELECT 1 FROM payment_stages WHERE apartment_id IS NULL AND stage_order = 15);
+
+INSERT INTO payment_stages (stage_name, percentage, stage_order, apartment_id)
+SELECT 'Flooring', 10.00, 16, NULL
+WHERE NOT EXISTS (SELECT 1 FROM payment_stages WHERE apartment_id IS NULL AND stage_order = 16);
+
+INSERT INTO payment_stages (stage_name, percentage, stage_order, apartment_id)
+SELECT 'Handover', 5.00, 17, NULL
+WHERE NOT EXISTS (SELECT 1 FROM payment_stages WHERE apartment_id IS NULL AND stage_order = 17);
 
 -- 14. PAYMENT SCHEDULES (Per-client stage-wise breakdown)
 CREATE TABLE IF NOT EXISTS payment_schedules (
@@ -506,6 +550,90 @@ CREATE TABLE IF NOT EXISTS reminder_logs (
   FOREIGN KEY (demand_letter_id) REFERENCES demand_letters(id) ON DELETE SET NULL
 );
 
+-- 19. WORK PROJECTIONS
+CREATE TABLE IF NOT EXISTS work_projections (
+  id                    INT AUTO_INCREMENT PRIMARY KEY,
+  client_id             INT NOT NULL,
+  flat_id               INT,
+  milestone_name        VARCHAR(200) NOT NULL,
+  milestone_percentage  DECIMAL(5,2) NOT NULL,
+  milestone_order       INT NOT NULL DEFAULT 0,
+  completion_date       DATE,
+  notes                 TEXT,
+  proof_image           VARCHAR(500),
+  status                ENUM('pending','completed') DEFAULT 'pending',
+  created_by            INT,
+  created_at            TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at            TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+  FOREIGN KEY (flat_id) REFERENCES flats(id) ON DELETE SET NULL,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+  UNIQUE(client_id, milestone_name),
+  INDEX idx_wp_client_status (client_id, status),
+  INDEX idx_wp_milestone (milestone_name)
+);
+
+-- 17B. DUE REMINDERS (Synced operational queue from Work Projection schedules)
+CREATE TABLE IF NOT EXISTS due_reminders (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  client_id INT NOT NULL,
+  flat_id INT,
+  schedule_id INT,
+  work_projection_id INT,
+  client_name VARCHAR(200) NOT NULL,
+  phone VARCHAR(20),
+  email VARCHAR(150),
+  flat_unit VARCHAR(100),
+  apartment_name VARCHAR(200),
+  projection_stage VARCHAR(200),
+  payment_percentage DECIMAL(5,2) NOT NULL DEFAULT 0,
+  total_amount DECIMAL(15,2) NOT NULL DEFAULT 0,
+  total_paid DECIMAL(15,2) NOT NULL DEFAULT 0,
+  due_amount DECIMAL(15,2) NOT NULL DEFAULT 0,
+  gst_percent DECIMAL(5,2) NOT NULL DEFAULT 0,
+  gst_amount DECIMAL(15,2) NOT NULL DEFAULT 0,
+  total_payable DECIMAL(15,2) NOT NULL DEFAULT 0,
+  due_date DATE,
+  status ENUM('upcoming','overdue','paid') DEFAULT 'upcoming',
+  email_status ENUM('not_sent','sent','failed','skipped') DEFAULT 'not_sent',
+  last_sent_at DATETIME,
+  reminder_count INT NOT NULL DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
+  FOREIGN KEY (flat_id) REFERENCES flats(id) ON DELETE SET NULL,
+  FOREIGN KEY (schedule_id) REFERENCES payment_schedules(id) ON DELETE SET NULL,
+  FOREIGN KEY (work_projection_id) REFERENCES work_projections(id) ON DELETE SET NULL,
+  UNIQUE KEY uq_due_reminder_schedule (schedule_id),
+  INDEX idx_due_reminders_status_date (status, due_date),
+  INDEX idx_due_reminders_client (client_id),
+  INDEX idx_due_reminders_email_status (email_status)
+);
+
+-- 17C. EMAIL TEMPLATES
+CREATE TABLE IF NOT EXISTS email_templates (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  template_key VARCHAR(100) NOT NULL UNIQUE,
+  name VARCHAR(200) NOT NULL,
+  subject VARCHAR(300) NOT NULL,
+  html_body MEDIUMTEXT NOT NULL,
+  is_active BOOLEAN DEFAULT TRUE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+-- 17D. SCHEDULED REMINDER RULES
+CREATE TABLE IF NOT EXISTS scheduled_reminders (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(100) NOT NULL,
+  days_offset INT NOT NULL,
+  is_active BOOLEAN DEFAULT TRUE,
+  last_run_at DATETIME,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_scheduled_reminders_offset (days_offset)
+);
+
 -- 18. AUDIT, NOTIFICATIONS, AND BACKUP TRACKING
 CREATE TABLE IF NOT EXISTS audit_logs (
   id           BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -544,29 +672,6 @@ CREATE TABLE IF NOT EXISTS backup_logs (
   created_by    INT,
   created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
-);
-
--- 19. WORK PROJECTIONS
-CREATE TABLE IF NOT EXISTS work_projections (
-  id                    INT AUTO_INCREMENT PRIMARY KEY,
-  client_id             INT NOT NULL,
-  flat_id               INT,
-  milestone_name        VARCHAR(200) NOT NULL,
-  milestone_percentage  DECIMAL(5,2) NOT NULL,
-  milestone_order       INT NOT NULL DEFAULT 0,
-  completion_date       DATE,
-  notes                 TEXT,
-  proof_image           VARCHAR(500),
-  status                ENUM('pending','completed') DEFAULT 'pending',
-  created_by            INT,
-  created_at            TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at            TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE,
-  FOREIGN KEY (flat_id) REFERENCES flats(id) ON DELETE SET NULL,
-  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
-  UNIQUE(client_id, milestone_name),
-  INDEX idx_wp_client_status (client_id, status),
-  INDEX idx_wp_milestone (milestone_name)
 );
 
 -- 20. WORK PROJECTION MILESTONES (Master Data)

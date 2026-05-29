@@ -114,22 +114,17 @@ function detectSheetType(headers) {
   return 'unknown';
 }
 
-/**
- * Extract block name from sheet name / title row
- */
-function extractBlockName(sheetName, titleRow) {
-  // Try sheet name first: "Block-A" → "A", "Block -A" → "A"
-  const sheetMatch = sheetName.match(/block\s*[-–]\s*([A-Za-z0-9]+)/i);
-  if (sheetMatch) return sheetMatch[1].toUpperCase();
+function generateBlockName(index) {
+  let value = index + 1;
+  let name = '';
 
-  // Try title row: "BLOCK- A" → "A"
-  if (titleRow) {
-    const titleStr = String(titleRow[0] || '').trim();
-    const titleMatch = titleStr.match(/block\s*[-–]\s*([A-Za-z0-9]+)/i);
-    if (titleMatch) return titleMatch[1].toUpperCase();
+  while (value > 0) {
+    value -= 1;
+    name = String.fromCharCode(65 + (value % 26)) + name;
+    value = Math.floor(value / 26);
   }
 
-  return sheetName; // fallback
+  return name;
 }
 
 /**
@@ -258,6 +253,7 @@ router.post('/parse-headers', verifyToken, upload.single('file'), async (req, re
 
     const wb = XLSX.readFile(req.file.path);
     const sheets = [];
+    let blockIndex = 0;
 
     for (const sheetName of wb.SheetNames) {
       const ws = wb.Sheets[sheetName];
@@ -270,7 +266,7 @@ router.post('/parse-headers', verifyToken, upload.single('file'), async (req, re
 
       const headers = data[headerRowIdx].map(h => String(h || '').trim()).filter(Boolean);
       const sheetType = detectSheetType(headers);
-      const blockName = extractBlockName(sheetName, data[0]);
+  const blockName = generateBlockName(blockIndex++);
 
       // Get data rows (skip header, skip TOTAL rows)
       const dataRows = data.slice(headerRowIdx + 1).filter(row => {
@@ -322,8 +318,8 @@ router.post('/parse-headers', verifyToken, upload.single('file'), async (req, re
 router.post('/bulk-upload/flat-details', verifyToken, upload.single('file'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-    const { apartment_id, column_mappings } = req.body;
-    if (!apartment_id) return res.status(400).json({ error: 'apartment_id is required' });
+    const { property_id, column_mappings, parking_slots } = req.body;
+    if (!property_id) return res.status(400).json({ error: 'property_id is required' });
 
     const parsedMappings = typeof column_mappings === 'string' ? JSON.parse(column_mappings) : (column_mappings || {});
     const wb = XLSX.readFile(req.file.path);
@@ -333,6 +329,7 @@ router.post('/bulk-upload/flat-details', verifyToken, upload.single('file'), asy
     let totalSkipped = 0;
     const errors = [];
     const processedSheets = [];
+    let blockIndex = 0;
 
     for (const sheetName of wb.SheetNames) {
       const ws = wb.Sheets[sheetName];
@@ -345,7 +342,27 @@ router.post('/bulk-upload/flat-details', verifyToken, upload.single('file'), asy
       }
 
       const headers = data[headerRowIdx].map(h => String(h || '').trim());
-      const blockName = extractBlockName(sheetName, data[0]);
+      const blockName = generateBlockName(blockIndex++);
+
+      let currentApartmentId;
+      try {
+        const [existingApt] = await pool.query(
+          'SELECT id FROM apartments WHERE property_id = ? AND name = ?',
+          [Number(property_id), blockName]
+        );
+        if (existingApt.length > 0) {
+          currentApartmentId = existingApt[0].id;
+        } else {
+          const [newApt] = await pool.query(
+            'INSERT INTO apartments (property_id, name, parking_slots) VALUES (?, ?, ?)',
+            [Number(property_id), blockName, parking_slots ? Number(parking_slots) : null]
+          );
+          currentApartmentId = newApt.insertId;
+        }
+      } catch (err) {
+        processedSheets.push({ sheetName, status: 'skipped', reason: 'Failed to resolve or create block: ' + err.message });
+        continue;
+      }
 
       // Build column mapping: systemField → column index
       // Use provided mappings, or fall back to auto-map
@@ -385,7 +402,7 @@ router.post('/bulk-upload/flat-details', verifyToken, upload.single('file'), asy
           }
 
           const flatData = {
-            apartment_id: Number(apartment_id),
+            apartment_id: currentApartmentId,
             flat_number: String(flatNumber),
             flat_type: getValue('flat_type'),
             floor: getValue('floor')?.trim() || null,
@@ -475,8 +492,8 @@ router.post('/bulk-upload/flat-details', verifyToken, upload.single('file'), asy
 router.post('/bulk-upload/booking-status', verifyToken, upload.single('file'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-    const { apartment_id, column_mappings } = req.body;
-    if (!apartment_id) return res.status(400).json({ error: 'apartment_id is required' });
+    const { property_id, column_mappings, parking_slots } = req.body;
+    if (!property_id) return res.status(400).json({ error: 'property_id is required' });
 
     const parsedMappings = typeof column_mappings === 'string' ? JSON.parse(column_mappings) : (column_mappings || {});
     const wb = XLSX.readFile(req.file.path);
@@ -487,6 +504,7 @@ router.post('/bulk-upload/booking-status', verifyToken, upload.single('file'), a
     let totalNotFound = 0;
     const errors = [];
     const processedSheets = [];
+    let blockIndex = 0;
 
     for (const sheetName of wb.SheetNames) {
       const ws = wb.Sheets[sheetName];
@@ -499,7 +517,27 @@ router.post('/bulk-upload/booking-status', verifyToken, upload.single('file'), a
       }
 
       const headers = data[headerRowIdx].map(h => String(h || '').trim());
-      const blockName = extractBlockName(sheetName, data[0]);
+      const blockName = generateBlockName(blockIndex++);
+
+      let currentApartmentId;
+      try {
+        const [existingApt] = await pool.query(
+          'SELECT id FROM apartments WHERE property_id = ? AND name = ?',
+          [Number(property_id), blockName]
+        );
+        if (existingApt.length > 0) {
+          currentApartmentId = existingApt[0].id;
+        } else {
+          const [newApt] = await pool.query(
+            'INSERT INTO apartments (property_id, name, parking_slots) VALUES (?, ?, ?)',
+            [Number(property_id), blockName, parking_slots ? Number(parking_slots) : null]
+          );
+          currentApartmentId = newApt.insertId;
+        }
+      } catch (err) {
+        processedSheets.push({ sheetName, status: 'skipped', reason: 'Failed to resolve or create block: ' + err.message });
+        continue;
+      }
 
       // Build column mapping
       const sheetMappings = parsedMappings[sheetName] || autoMapHeaders(headers, BOOKING_STATUS_FIELDS);
@@ -544,7 +582,7 @@ router.post('/bulk-upload/booking-status', verifyToken, upload.single('file'), a
           // Find existing flat
           const [existingFlats] = await pool.query(
             'SELECT id FROM flats WHERE apartment_id = ? AND flat_number = ?',
-            [Number(apartment_id), String(flatNumber)]
+            [currentApartmentId, String(flatNumber)]
           );
 
           if (existingFlats.length === 0) {
@@ -563,7 +601,7 @@ router.post('/bulk-upload/booking-status', verifyToken, upload.single('file'), a
                  floor = COALESCE(VALUES(floor), floor),
                  block = COALESCE(VALUES(block), block),
                  sbu_area = COALESCE(VALUES(sbu_area), sbu_area)`,
-              [Number(apartment_id), String(flatNumber), flatType, floorVal, blockName, sbuArea, !isBooked, isBooked ? 'booked' : 'available']
+              [currentApartmentId, String(flatNumber), flatType, floorVal, blockName, sbuArea, !isBooked, isBooked ? 'booked' : 'available']
             );
 
             if (isBooked) { sheetBooked++; totalBooked++; }

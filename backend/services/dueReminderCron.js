@@ -5,7 +5,7 @@
  * Runs daily at 9:00 AM IST
  * 
  * Logic:
- * 1. Find all payment_schedules with due_date <= today AND status != 'paid'
+ * 1. Find all payment_schedules matching active reminder rules AND status != 'paid'
  * 2. Recalculate dues (carry-forward partial payments)
  * 3. Check reminder_logs to avoid duplicate reminders for same due_date
  * 4. Generate demand letter PDF
@@ -22,6 +22,7 @@ import pool from '../config/db.js';
 import { sendMail } from '../utils/mailer.js';
 import { demandLetterEmail } from '../utils/emailTemplates.js';
 import { recalculateDues as recalculateLedgerDues } from './paymentLedger.js';
+import { syncDueReminders } from './dueReminderSync.js';
 import { writeDemandLetterPdf } from './pdf/demandLetterPdf.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -49,10 +50,10 @@ async function wasReminderSentToday(clientId, dueDate) {
 async function generateDemandLetterPDF(client, dueInfo) {
   const totalAmount = dueInfo.total_flat_amount;
   const paidAmount = dueInfo.total_paid;
-  const dueAmount = Number(dueInfo.current_due ?? dueInfo.current_stage_due ?? dueInfo.combined_due ?? 0);
+  const dueAmount = Number(dueInfo.combined_due ?? dueInfo.current_due ?? dueInfo.current_stage_due ?? 0);
   const gstPercent = Number(dueInfo.gst_percent || 0);
-  const gstAmount = Number(dueInfo.gst_amount ?? (dueAmount * gstPercent / 100));
-  const grandTotal = Number(dueInfo.total_payable ?? (dueAmount + gstAmount));
+  const gstAmount = Number((dueAmount * gstPercent) / 100);
+  const grandTotal = Number(dueAmount + gstAmount);
   const formattedDate = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
   const safeClientName = (client.name || 'Client').replace(/[^a-zA-Z0-9 ]/g, '').trim().replace(/\s+/g, '_');
@@ -68,7 +69,7 @@ async function generateDemandLetterPDF(client, dueInfo) {
       apartmentName: client.apartment_name,
       area: client.sbu_area,
       totalAmount,
-      stageAmount: dueInfo.current_stage_due || dueAmount,
+      stageAmount: dueAmount,
       paidAmount,
       dueAmount,
       gstPercent,
@@ -124,7 +125,8 @@ async function processDueReminders(io, triggerType = 'cron') {
   console.log(`\n⏰ [DUE REMINDER] Starting ${triggerType} run — ${today}`);
 
   try {
-    // 1. Find all payment_schedules where due_date <= today AND status != 'paid'
+    // 1. Find all schedules matching active reminder rules:
+    // 7/3/1 days before due, on due date, and after overdue.
     const [overdueSchedules] = await pool.query(`
       SELECT ps.*, c.id as client_id, c.name as client_name, c.email as client_email,
         c.phone as client_phone, c.flat_id,
@@ -134,9 +136,23 @@ async function processDueReminders(io, triggerType = 'cron') {
       JOIN clients c ON ps.client_id = c.id
       LEFT JOIN flats f ON c.flat_id = f.id
       LEFT JOIN apartments a ON f.apartment_id = a.id
-      WHERE ps.due_date <= ? AND ps.status != 'paid'
+      JOIN work_projections wp
+        ON wp.client_id = ps.client_id
+        AND wp.milestone_name = ps.stage_name
+        AND wp.status = 'completed'
+      WHERE ps.status != 'paid'
+        AND ps.due_date IS NOT NULL
+        AND EXISTS (
+          SELECT 1
+          FROM scheduled_reminders sr
+          WHERE sr.is_active = TRUE
+            AND (
+              (sr.days_offset <= 0 AND ps.due_date = DATE_ADD(?, INTERVAL ABS(sr.days_offset) DAY))
+              OR (sr.days_offset > 0 AND ps.due_date < ?)
+            )
+        )
       ORDER BY ps.client_id, ps.stage_order
-    `, [today]);
+    `, [today, today]);
 
     if (overdueSchedules.length === 0) {
       console.log('   ✅ No due reminders to send.');
@@ -182,9 +198,23 @@ async function processDueReminders(io, triggerType = 'cron') {
           continue;
         }
 
-        // Recalculate dues with carry-forward
+        // Recalculate dues and sync reminders to get combined due
         const dueInfo = await recalculateLedgerDues(clientId);
-        const currentDue = Number(dueInfo?.current_due ?? dueInfo?.current_stage_due ?? dueInfo?.combined_due ?? 0);
+        await syncDueReminders(clientId);
+        const [reminderRows] = await pool.query(
+          `SELECT * FROM due_reminders
+           WHERE client_id = ? AND status != 'paid'
+           ORDER BY due_date IS NULL, due_date ASC
+           LIMIT 1`,
+          [clientId]
+        );
+        const reminderRow = reminderRows[0] || null;
+        const combinedDue = Number(reminderRow?.due_amount || dueInfo?.combined_due || dueInfo?.current_due || dueInfo?.current_stage_due || 0);
+        const combinedGstPercent = Number(reminderRow?.gst_percent || dueInfo?.gst_percent || 0);
+        const combinedGst = Number(reminderRow?.gst_amount ?? ((combinedDue || 0) * (combinedGstPercent / 100)));
+        const combinedTotal = Number(reminderRow?.total_payable ?? (combinedDue + combinedGst));
+
+        const currentDue = combinedDue;
         if (!dueInfo || currentDue <= 0) {
           console.log(`   ⏭️  ${client.name} — no current due, skipping`);
           skipped++;
@@ -193,18 +223,24 @@ async function processDueReminders(io, triggerType = 'cron') {
         const currentDueDate = dueInfo.current_due_date
           ? new Date(dueInfo.current_due_date).toISOString().slice(0, 10)
           : null;
-        if (currentDueDate && currentDueDate > today) {
-          console.log(`   ⏭️  ${client.name} — current installment is not due yet (${currentDueDate}), skipping`);
-          skipped++;
-          continue;
-        }
-
         console.log(`   📨 Processing: ${client.name} | Current Due: ₹${currentDue}`);
+
+        const dueInfoForLetter = {
+          ...dueInfo,
+          combined_due: combinedDue,
+          current_due: combinedDue,
+          current_stage_due: combinedDue,
+          gst_percent: combinedGstPercent,
+          gst_amount: combinedGst,
+          total_payable: combinedTotal,
+          current_stage: reminderRow?.projection_stage || dueInfo?.current_stage,
+          current_due_date: reminderRow?.due_date || dueInfo?.current_due_date,
+        };
 
         // Generate demand letter PDF
         let demandLetter = null;
         try {
-          demandLetter = await generateDemandLetterPDF(client, dueInfo);
+          demandLetter = await generateDemandLetterPDF(client, dueInfoForLetter);
           console.log(`   📄 PDF generated: ${demandLetter.fileName}`);
         } catch (pdfErr) {
           console.error(`   ❌ PDF generation failed for ${client.name}:`, pdfErr.message);
@@ -221,9 +257,9 @@ async function processDueReminders(io, triggerType = 'cron') {
               apartmentName: client.apartment_name,
               flatNo: client.flat_number,
               dueAmount: currentDue,
-              gstAmount: demandLetter?.gstAmount || dueInfo.gst_amount || 0,
-              gstPercent: dueInfo.gst_percent || 0,
-              grandTotal: demandLetter?.grandTotal || dueInfo.total_payable || currentDue,
+              gstAmount: demandLetter?.gstAmount || combinedGst,
+              gstPercent: combinedGstPercent,
+              grandTotal: demandLetter?.grandTotal || combinedTotal,
               date: formattedDate,
             });
 

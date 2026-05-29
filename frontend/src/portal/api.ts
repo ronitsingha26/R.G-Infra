@@ -170,10 +170,11 @@ export const api = {
     if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error((b as { error?: string }).error || 'Parse failed'); }
     return res.json();
   },
-  bulkUploadFlatDetails: async (apartmentId: number, file: File, columnMappings?: Record<string, Record<string, string>>): Promise<BulkUploadResult> => {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('apartment_id', String(apartmentId));
+  bulkUploadFlatDetails: async (propertyId: number, file: File, parkingSlots?: string, columnMappings?: Record<string, Record<string, string>>): Promise<BulkUploadResult> => {
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('property_id', propertyId.toString())
+    if (parkingSlots) formData.append('parking_slots', parkingSlots)
     if (columnMappings) formData.append('column_mappings', JSON.stringify(columnMappings));
     const token = getToken();
     const headers: Record<string, string> = {};
@@ -182,11 +183,11 @@ export const api = {
     if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error((b as { error?: string }).error || 'Upload failed'); }
     return res.json();
   },
-  bulkUploadBookingStatus: async (apartmentId: number, file: File, columnMappings?: Record<string, Record<string, string>>): Promise<BulkUploadBookingResult> => {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('apartment_id', String(apartmentId));
-    if (columnMappings) formData.append('column_mappings', JSON.stringify(columnMappings));
+  bulkUploadBookingStatus: async (propertyId: number, file: File, columnMappings?: Record<string, Record<string, string>>): Promise<BulkUploadBookingResult> => {
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('property_id', propertyId.toString())
+    if (columnMappings) formData.append('column_mappings', JSON.stringify(columnMappings))
     const token = getToken();
     const headers: Record<string, string> = {};
     if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -257,6 +258,20 @@ export const api = {
 
   // Reminders
   getReminderLogs: () => request<ReminderLog[]>('/reminders'),
+  getDueReminders: (filters?: { date?: string; status?: string; client?: string; min_due?: string; max_due?: string }) => {
+    const params = new URLSearchParams();
+    if (filters?.date) params.set('date', filters.date);
+    if (filters?.status) params.set('status', filters.status);
+    if (filters?.client) params.set('client', filters.client);
+    if (filters?.min_due) params.set('min_due', filters.min_due);
+    if (filters?.max_due) params.set('max_due', filters.max_due);
+    const qs = params.toString();
+    return request<DueReminder[]>(`/reminders/due${qs ? `?${qs}` : ''}`);
+  },
+  sendBulkDueEmails: (data: { due_date?: string; reminder_ids?: number[]; subject?: string; html_template?: string }) =>
+    request<{ message: string; sent: number; failed: number; skipped: number; total: number }>('/reminders/bulk-email', { method: 'POST', body: JSON.stringify(data) }),
+  previewDueReminderEmail: (id: number) => request<{ subject: string; html: string }>(`/reminders/email-preview/${id}`),
+  exportDueReminderReport: (format: 'xlsx' | 'pdf' = 'xlsx') => download(`/reminders/export?format=${format}`),
   getClientReminderLogs: (clientId: number) => request<ReminderLog[]>(`/reminders/client/${clientId}`),
   getReminderStats: () => request<ReminderStats>('/reminders/stats'),
   triggerReminders: () => request<{ message: string; processed: number; sent: number; skipped: number; failed: number }>('/reminders/trigger', { method: 'POST' }),
@@ -278,11 +293,12 @@ export const api = {
   getWorkProjectionMilestones: () => request<MilestoneDef[]>('/work-projection/milestones'),
   getWorkProjection: (clientId: number) => request<WorkProjection[]>(`/work-projection/${clientId}`),
   getWorkProjectionSummary: (clientId: number) => request<WorkProjectionSummary>(`/work-projection/summary/${clientId}`),
-  createWorkProjection: async (data: { client_id: number; milestone_name: string; completion_date?: string; notes?: string; proof_image?: File }): Promise<{ message: string; projection: WorkProjection }> => {
+  createWorkProjection: async (data: { client_id: number; milestone_name: string; completion_date?: string; due_date?: string; notes?: string; proof_image?: File }): Promise<{ message: string; projection: WorkProjection }> => {
     const formData = new FormData();
     formData.append('client_id', String(data.client_id));
     formData.append('milestone_name', data.milestone_name);
     if (data.completion_date) formData.append('completion_date', data.completion_date);
+    if (data.due_date) formData.append('due_date', data.due_date);
     if (data.notes) formData.append('notes', data.notes);
     if (data.proof_image) formData.append('proof_image', data.proof_image);
     const token = getToken();
@@ -500,6 +516,7 @@ export type PaymentSchedule = {
 
 export type ClientPayment = {
   id: number; client_id: number; flat_id: number; amount: number;
+  gst_amount?: number;
   payment_percentage?: number;
   payment_date: string; payment_mode: string; reference_no: string;
   notes: string; created_at?: string;
@@ -528,6 +545,16 @@ export type PendingDue = {
   client_name: string; unique_client_id: string;
   phone: string; email: string;
   flat_number: string; apartment_name: string;
+};
+
+export type DueReminder = {
+  id: number; client_id: number; flat_id: number | null; schedule_id: number | null; work_projection_id: number | null;
+  client_name: string; phone: string; email: string; flat_unit: string; apartment_name: string;
+  projection_stage: string; payment_percentage: number; total_amount: number; due_amount: number;
+  total_paid?: number; gst_percent?: number; gst_amount?: number; total_payable?: number;
+  due_date: string | null; status: 'upcoming' | 'overdue' | 'paid';
+  email_status: 'not_sent' | 'sent' | 'failed' | 'skipped';
+  last_sent_at: string | null; reminder_count: number; created_at?: string; updated_at?: string;
 };
 
 export type ReminderLog = {
@@ -624,11 +651,22 @@ export type WorkProjectionSummary = {
     apartment_name: string; property_name: string; flat_number: string;
     floor: string; block: string;
   };
-  total_property_amount: number; total_paid: number;
+  total_property_amount: number; gst_percent?: number; gst_amount?: number; grand_total_amount?: number; total_paid: number;
   total_completed_percentage: number; total_due_generated: number;
+  total_due_generated_gst?: number; total_due_generated_with_gst?: number;
   remaining_collectable: number; total_pending_percentage: number;
+  remaining_collectable_gst?: number; remaining_collectable_with_gst?: number;
+  total_paid_with_gst?: number;
+  advance_payment?: number;
   milestones: WorkProjection[];
   last_updated: string | null;
+  schedule_current_stage?: string | null;
+  schedule_next_stage?: string | null;
+  schedule_current_due?: number | null;
+  schedule_next_stage_amount?: number | null;
+  schedule_next_installment_amount?: number | null;
+  schedule_carry_over?: number | null;
+  schedule_combined_due?: number | null;
 };
 
 export type WorkProjectionClient = {
@@ -641,4 +679,3 @@ export type WorkProjectionClient = {
 export type MilestoneDef = {
   name: string; percentage: number; order: number;
 };
-

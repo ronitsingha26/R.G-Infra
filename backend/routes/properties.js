@@ -82,14 +82,67 @@ router.put('/:id', verifyToken, async (req, res) => {
 
 // DELETE /api/properties/:id
 router.delete('/:id', verifyToken, async (req, res) => {
+  const connection = await pool.getConnection();
   try {
-    await pool.query('DELETE FROM properties WHERE id = ?', [req.params.id]);
+    await connection.beginTransaction();
+    const propId = req.params.id;
+
+    // Get all apartment IDs under this property
+    const [apts] = await connection.query('SELECT id FROM apartments WHERE property_id = ?', [propId]);
+    const aptIds = apts.map(a => a.id);
+
+    if (aptIds.length > 0) {
+      // Get all flat IDs under these apartments
+      const [flats] = await connection.query('SELECT id FROM flats WHERE apartment_id IN (?)', [aptIds]);
+      const flatIds = flats.map(f => f.id);
+
+      if (flatIds.length > 0) {
+        // Get client IDs linked to these flats
+        const [cls] = await connection.query('SELECT id FROM clients WHERE flat_id IN (?)', [flatIds]);
+        const clientIds = cls.map(c => c.id);
+
+        if (clientIds.length > 0) {
+          // Delete client-linked data
+          await connection.query('DELETE FROM work_projections WHERE client_id IN (?)', [clientIds]);
+          await connection.query('DELETE FROM work_projection_milestones WHERE client_id IN (?)', [clientIds]);
+          await connection.query('DELETE FROM demand_letters WHERE client_id IN (?)', [clientIds]);
+          await connection.query('DELETE FROM reminder_logs WHERE client_id IN (?)', [clientIds]);
+          await connection.query('DELETE FROM communication_logs WHERE client_id IN (?)', [clientIds]);
+          await connection.query('DELETE FROM communication_history WHERE client_id IN (?)', [clientIds]);
+          await connection.query('DELETE FROM client_payments WHERE client_id IN (?)', [clientIds]);
+          await connection.query('DELETE FROM payment_schedules WHERE client_id IN (?)', [clientIds]);
+          await connection.query('DELETE FROM payment_stages WHERE client_id IN (?)', [clientIds]);
+          await connection.query('DELETE FROM dues WHERE client_id IN (?)', [clientIds]);
+          await connection.query('DELETE FROM due_reminders WHERE client_id IN (?)', [clientIds]);
+          await connection.query('DELETE FROM notifications WHERE client_id IN (?)', [clientIds]).catch(() => {});
+          await connection.query('DELETE FROM invoices WHERE client_id IN (?)', [clientIds]).catch(() => {});
+          await connection.query('DELETE FROM bookings WHERE client_id IN (?)', [clientIds]);
+          await connection.query('DELETE FROM clients WHERE id IN (?)', [clientIds]);
+        }
+
+        // Delete flat-linked data
+        await connection.query('DELETE FROM infrastructure_details WHERE flat_id IN (?)', [flatIds]);
+        await connection.query('DELETE FROM flats WHERE id IN (?)', [flatIds]);
+      }
+
+      // Delete apartments
+      await connection.query('DELETE FROM apartments WHERE id IN (?)', [aptIds]);
+    }
+
+    // Finally delete the property itself
+    await connection.query('DELETE FROM properties WHERE id = ?', [propId]);
+
+    await connection.commit();
     req.app.get('io')?.emit('data_changed', { type: 'project_deleted' });
-    res.json({ message: 'Property deleted' });
+    res.json({ message: 'Property and all linked data deleted successfully' });
   } catch (err) {
+    await connection.rollback();
     console.error('Delete property error:', err);
     res.status(500).json({ error: 'Server error' });
+  } finally {
+    connection.release();
   }
 });
+
 
 export default router;

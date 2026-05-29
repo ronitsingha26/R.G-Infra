@@ -45,16 +45,18 @@ const COLUMN_ALIASES = {
   terrace_area:     ['terrace', 'terrace area', 'terrace_area', 'terrace sq ft'],
   built_up_area:    ['built up area', 'built_up_area', 'builtup area', 'buildup area', 'built area'],
   undivided_share:  ['undivided share of land', 'undivided share', 'undivided_share', 'udi share', 'udi', 'uds', 'land share'],
-  total_amount:     ['flat amount', 'total amount', 'total_amount', 'amount', 'price', 'flat price', 'cost', 'flat value', 'flat amount (₹)', 'flat amount (rs)'],
-  gst_percent:      ['gst', 'gst %', 'gst(%)', 'gst_percent', 'gst percent', 'tax %', 'tax'],
+  // Price fields — added 'flat amount (rs.)' for RG Infra Excel format
+  total_amount:     ['flat amount', 'total amount', 'total_amount', 'amount', 'price', 'flat price', 'cost', 'flat value',
+                     'flat amount (₹)', 'flat amount (rs)', 'flat amount (rs.)', 'flat amount (inr)', 'value'],
+  gst_percent:      ['gst', 'gst %', 'gst(%)', 'gst_percent', 'gst percent', 'tax %', 'tax', 'gst(%)', 'gst rate'],
 
   // Booking Status columns
   booking_status:   ['booking status', 'status', 'booking_status', 'booked', 'availability', 'available'],
   customer_name:    ['customer name', 'customer_name', 'client name', 'client_name', 'buyer name', 'buyer', 'customer', 'name', 'owner'],
 };
 
-// System fields
-const FLAT_DETAIL_FIELDS = ['flat_number', 'flat_type', 'floor', 'sbu_area', 'carpet_area', 'balcony_area', 'terrace_area', 'built_up_area', 'undivided_share'];
+// System fields — include total_amount + gst_percent so price is imported from Excel
+const FLAT_DETAIL_FIELDS = ['flat_number', 'flat_type', 'floor', 'sbu_area', 'carpet_area', 'balcony_area', 'terrace_area', 'built_up_area', 'undivided_share', 'total_amount', 'gst_percent'];
 const BOOKING_STATUS_FIELDS = ['flat_number', 'flat_type', 'floor', 'sbu_area', 'booking_status', 'customer_name'];
 
 /**
@@ -116,26 +118,35 @@ function detectSheetType(headers) {
 
 function generateBlockName(index) {
   let value = index + 1;
-  let name = '';
+  let letter = '';
 
   while (value > 0) {
     value -= 1;
-    name = String.fromCharCode(65 + (value % 26)) + name;
+    letter = String.fromCharCode(65 + (value % 26)) + letter;
     value = Math.floor(value / 26);
   }
 
-  return name;
+  return `Block ${letter}`;
 }
+
 
 /**
  * Find header row index in sheet data
  */
 function findHeaderRow(data) {
-  for (let i = 0; i < Math.min(10, data.length); i++) {
+  for (let i = 0; i < Math.min(15, data.length); i++) {
     const row = data[i];
     if (!row || !Array.isArray(row)) continue;
     const normalized = row.map(c => String(c || '').trim().toLowerCase());
-    if (normalized.some(c => c.includes('flat no') || c === 'flat no' || c === 'flat number')) {
+    // Find row that has flat no / flat number column
+    if (normalized.some(c => c.includes('flat no') || c === 'flat no' || c === 'flat number' || c === 'flat no.')) {
+      return i;
+    }
+    // Also accept rows with SL. NO. + TYPE combination (RG Infra format)
+    const hasSl = normalized.some(c => c.includes('sl') && (c.includes('no') || c.includes('.')));
+    const hasType = normalized.some(c => c === 'type' || c.includes('bhk') || c.includes('flat type'));
+    const hasFloor = normalized.some(c => c === 'floor');
+    if (hasSl && hasType && hasFloor) {
       return i;
     }
   }

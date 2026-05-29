@@ -1,6 +1,6 @@
 /* ─── Light-Theme Portal UI Components ─── */
 
-import type React from 'react'
+import React, { useEffect, useRef, useState as useLocalState } from 'react'
 
 /* ─── Card ─── */
 export function PortalCard({ children, className = '', onClick }: { children: React.ReactNode; className?: string; onClick?: () => void }) {
@@ -84,6 +84,154 @@ export function Select({
         <option value="">{placeholder}</option>
         {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
+    </div>
+  )
+}
+
+/* ─── Searchable Select (Combobox) ─── */
+
+export function SearchableSelect({
+  label, value, onChange, options, placeholder = 'Search & select...', required = false, disabled = false,
+}: {
+  label: string; value: string; onChange: (v: string) => void
+  options: { value: string; label: string }[]; placeholder?: string; required?: boolean; disabled?: boolean
+}) {
+  const [open, setOpen] = useLocalState(false)
+  const [query, setQuery] = useLocalState('')
+  const containerRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  const selectedLabel = options.find((o) => o.value === value)?.label ?? ''
+
+  const filtered = query.trim()
+    ? options.filter((o) => o.label.toLowerCase().includes(query.toLowerCase()))
+    : options
+
+  // Close on outside click
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false)
+        setQuery('')
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  function handleSelect(val: string) {
+    onChange(val)
+    setOpen(false)
+    setQuery('')
+  }
+
+  function handleToggle() {
+    if (disabled) return
+    setOpen((prev) => {
+      if (!prev) setTimeout(() => inputRef.current?.focus(), 50)
+      else setQuery('')
+      return !prev
+    })
+  }
+
+  return (
+    <div ref={containerRef} style={{ position: 'relative' }}>
+      <label className="text-xs font-bold uppercase tracking-[0.08em] text-slate-500">
+        {label}{required && <span className="text-red-500 ml-0.5">*</span>}
+      </label>
+
+      {/* Trigger button */}
+      <button
+        type="button"
+        onClick={handleToggle}
+        disabled={disabled}
+        className="mt-1.5 w-full flex items-center justify-between rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] outline-none ring-orange-400/25 transition focus:border-orange-400 focus:ring-4 disabled:bg-slate-100 disabled:text-slate-500 text-left"
+        style={{ minHeight: '42px' }}
+      >
+        <span className={selectedLabel ? 'text-slate-900' : 'text-slate-400'}>
+          {selectedLabel || placeholder}
+        </span>
+        <svg
+          className={`ml-2 h-4 w-4 flex-shrink-0 text-slate-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+          xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+        >
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </button>
+
+      {/* Dropdown */}
+      {open && (
+        <div
+          style={{
+            position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0,
+            zIndex: 9999, background: '#fff',
+            border: '1px solid #e2e8f0',
+            borderRadius: '10px',
+            boxShadow: '0 16px 48px rgba(15,23,42,0.16)',
+            overflow: 'hidden',
+          }}
+        >
+          {/* Search input inside dropdown */}
+          <div style={{ padding: '8px', borderBottom: '1px solid #f1f5f9' }}>
+            <div style={{ position: 'relative' }}>
+              <svg
+                style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', width: '14px', height: '14px', color: '#94a3b8' }}
+                xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+              >
+                <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <input
+                ref={inputRef}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Type to search..."
+                style={{
+                  width: '100%', padding: '7px 10px 7px 32px',
+                  border: '1px solid #e2e8f0', borderRadius: '7px',
+                  fontSize: '13px', outline: 'none', color: '#0f172a',
+                  background: '#f8fafc', boxSizing: 'border-box',
+                }}
+                onKeyDown={(e) => e.key === 'Escape' && (setOpen(false), setQuery(''))}
+              />
+            </div>
+          </div>
+
+          {/* Options list */}
+          <div style={{ maxHeight: '220px', overflowY: 'auto' }}>
+            {filtered.length === 0 ? (
+              <div style={{ padding: '12px 16px', fontSize: '13px', color: '#94a3b8', textAlign: 'center' }}>No results found</div>
+            ) : (
+              filtered.map((o) => (
+                <button
+                  key={o.value}
+                  type="button"
+                  onClick={() => handleSelect(o.value)}
+                  style={{
+                    width: '100%', textAlign: 'left',
+                    padding: '9px 14px',
+                    fontSize: '13px',
+                    background: o.value === value ? '#fff7ed' : 'transparent',
+                    color: o.value === value ? '#ea580c' : '#1e293b',
+                    fontWeight: o.value === value ? '700' : '500',
+                    borderBottom: '1px solid #f8fafc',
+                    cursor: 'pointer',
+                    display: 'block',
+                    border: 'none',
+                    outline: 'none',
+                    transition: 'background 0.12s',
+                  }}
+                  onMouseEnter={(e) => { if (o.value !== value) (e.currentTarget as HTMLElement).style.background = '#fafafa' }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = o.value === value ? '#fff7ed' : 'transparent' }}
+                >
+                  {o.label}
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

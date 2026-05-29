@@ -18,6 +18,7 @@ import {
   CheckCircle2, AlertCircle, Loader2
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
+import React from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api, type Apartment, type BulkUploadResult, type BulkUploadBookingResult, type Flat, type Property, type SheetInfo } from '../api'
 import { usePortalStore } from '../store'
@@ -507,7 +508,7 @@ export function ProjectsPage() {
                   const apts = getAptsForProp(prop.id)
 
                   return (
-                    <>
+                    <React.Fragment key={prop.id}>
                       {/* Property Row */}
                       <tr
                         key={prop.id}
@@ -584,7 +585,7 @@ export function ProjectsPage() {
                                         const filteredFlats = getFilteredFlats(apt.id)
 
                                         return (
-                                          <>
+                                          <React.Fragment key={apt.id}>
                                             {/* Apartment Row */}
                                             <tr
                                               key={apt.id}
@@ -736,7 +737,7 @@ export function ProjectsPage() {
                                                 </td>
                                               </tr>
                                             )}
-                                          </>
+                                          </React.Fragment>
                                         )
                                       })}
                                     </tbody>
@@ -747,7 +748,7 @@ export function ProjectsPage() {
                           </td>
                         </tr>
                       )}
-                    </>
+                    </React.Fragment>
                   )
                 })}
               </tbody>

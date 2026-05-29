@@ -11,7 +11,7 @@ import { useNavigate } from 'react-router-dom'
 import { api, type Client, type Apartment, type Flat, type Property } from '../api'
 import { usePortalStore } from '../store'
 import { usePortalToast } from '../toast'
-import { EmptyState, inr, Input, Select, Modal, PortalButton, PortalCard, Textarea } from '../ui'
+import { EmptyState, inr, Input, Select, SearchableSelect, Modal, PortalButton, PortalCard, Textarea } from '../ui'
 
 const emptyForm = {
   name: '', phone: '', email: '', address: '', pan_number: '', aadhaar_number: '', purchase_date: '',
@@ -83,6 +83,13 @@ export function ClientsPage() {
             i === 0 && !p.slot ? { ...p, slot: extraParking } : p
           )
         }
+      }
+      // Auto-fill price from Excel data if not already set by user
+      if (selectedFlat.total_amount && !current.flat_price) {
+        next = { ...next, flat_price: String(Math.round(Number(selectedFlat.total_amount))) }
+      }
+      if (selectedFlat.gst_percent && !current.gst_percent) {
+        next = { ...next, gst_percent: String(selectedFlat.gst_percent) }
       }
       return next
     })
@@ -282,7 +289,7 @@ export function ClientsPage() {
               placeholder={!form.property_id ? 'Select property first' : 'Select Apartment...'}
               required
             />
-            <Select
+            <SearchableSelect
               label="Flat Number"
               value={form.flat_id}
               onChange={(v) => {
@@ -292,17 +299,21 @@ export function ClientsPage() {
                 setForm((s) => ({
                   ...s,
                   flat_id: v,
+                  flat_price: nextFlat?.total_amount ? String(Math.round(Number(nextFlat.total_amount))) : s.flat_price,
+                  gst_percent: nextFlat?.gst_percent ? String(nextFlat.gst_percent) : s.gst_percent,
                   parking_slot_no: s.parking_allotment ? primaryParking : '',
                   extra_parkings: s.extra_parking_allotment ? s.extra_parkings.map((p, i) => i === 0 ? { ...p, slot: extraParking } : p) : s.extra_parkings,
                 }))
               }}
               options={availableFlats.map((f) => ({
                 value: String(f.id),
-                label: `${f.flat_number} — ${f.flat_type || ''} Floor ${f.floor || '—'}, Block ${f.block || '—'} (${f.sbu_area || 0} sqft)`,
+                label: `${f.flat_number} — ${f.flat_type || ''} | Floor ${f.floor || '—'} | Block ${f.block || '—'} | ${f.sbu_area || 0} sqft${Number(f.total_amount) > 0 ? ` | ₹${Math.round(Number(f.total_amount)).toLocaleString('en-IN')}` : ''}`,
               }))}
-              placeholder={!form.apartment_id ? 'Select apartment first' : availableFlats.length === 0 ? 'No available flats' : 'Select Flat...'}
+              placeholder={!form.apartment_id ? 'Select apartment first' : availableFlats.length === 0 ? 'No available flats' : 'Search flat number...'}
               required
+              disabled={!form.apartment_id || availableFlats.length === 0}
             />
+
           </div>
 
           {form.flat_id && (() => {

@@ -149,13 +149,17 @@ export function ClientsPage() {
   }
 
   const displayName = (c: Client) => c.name || c.company_name || '—'
+  const handlePhoneChange = (value: string) => {
+    const digits = value.replace(/\D/g, '').slice(0, 10)
+    setForm((s) => ({ ...s, phone: digits }))
+  }
 
   return (
     <div className="space-y-6">
       <PortalCard>
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <div className="text-2xl font-extrabold text-slate-900">Clients</div>
+            <div className="text-2xl font-extrabold text-slate-900">Client Master</div>
             <div className="text-sm text-slate-500">{store.clients.length} total clients</div>
           </div>
           <div className="flex items-center gap-3">
@@ -236,7 +240,7 @@ export function ClientsPage() {
           </div>
           <div className="grid gap-4 md:grid-cols-2">
             <Input label="Client Name" value={form.name} onChange={(v) => setForm((s) => ({ ...s, name: v }))} required />
-            <Input label="Phone" value={form.phone} onChange={(v) => setForm((s) => ({ ...s, phone: v }))} />
+            <Input label="Phone" value={form.phone} onChange={handlePhoneChange} type="tel" inputMode="numeric" maxLength={10} placeholder="10 digits only" />
             <Input label="Email" value={form.email} onChange={(v) => setForm((s) => ({ ...s, email: v }))} type="email" />
             <Input
               label="PAN"

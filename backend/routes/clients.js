@@ -22,6 +22,10 @@ function normalizeAadhaar(value) {
   return String(value || '').replace(/\D/g, '').slice(0, 12);
 }
 
+function normalizePhone(value) {
+  return String(value || '').replace(/\D/g, '');
+}
+
 function validateIds(pan, aadhaar) {
   if (pan && pan.length !== 10) return 'PAN must be exactly 10 characters';
   if (aadhaar && aadhaar.length !== 12) return 'Aadhaar must be exactly 12 digits';
@@ -33,7 +37,8 @@ router.get('/', verifyToken, async (req, res) => {
   try {
     const [clients] = await pool.query(`
       SELECT c.*, 
-        f.flat_number, f.floor, f.block, f.sbu_area, f.total_amount, COALESCE(f.gst_percent, 0) AS gst_percent,
+        f.flat_number, f.floor, f.block, f.sbu_area, f.carpet_area, f.balcony_area, f.terrace_area, f.built_up_area, f.undivided_share,
+        f.total_amount, COALESCE(f.gst_percent, 0) AS gst_percent,
         ROUND(COALESCE(f.total_amount, 0) * COALESCE(f.gst_percent, 0) / 100, 2) AS gst_amount,
         ROUND(COALESCE(f.total_amount, 0) + (COALESCE(f.total_amount, 0) * COALESCE(f.gst_percent, 0) / 100), 2) AS total_amount_with_gst,
         f.status as flat_status,
@@ -42,6 +47,7 @@ router.get('/', verifyToken, async (req, res) => {
           i.parking_allotment, i.parking_slot_no, i.extra_parking_allotment, i.extra_parking_slot_no, i.extra_parking_charge,
           i.transformer_apartment, i.transformer_flat, i.corpus_fund, i.electricity_board_source, i.water_connection_details,
         COALESCE((SELECT SUM(amount) FROM client_payments WHERE client_id = c.id), 0) as total_paid,
+          COALESCE((SELECT SUM(amount) + SUM(COALESCE(gst_amount, 0)) FROM client_payments WHERE client_id = c.id), 0) as total_paid_with_gst,
         (f.total_amount - COALESCE((SELECT SUM(amount) FROM client_payments WHERE client_id = c.id), 0)) as total_due
       FROM clients c
       LEFT JOIN flats f ON c.flat_id = f.id
@@ -136,7 +142,8 @@ router.get('/:id', verifyToken, async (req, res) => {
   try {
     const [clients] = await pool.query(`
       SELECT c.*, 
-        f.flat_number, f.floor, f.block, f.sbu_area, f.total_amount, COALESCE(f.gst_percent, 0) AS gst_percent,
+        f.flat_number, f.floor, f.block, f.sbu_area, f.carpet_area, f.balcony_area, f.terrace_area, f.built_up_area, f.undivided_share,
+        f.total_amount, COALESCE(f.gst_percent, 0) AS gst_percent,
         ROUND(COALESCE(f.total_amount, 0) * COALESCE(f.gst_percent, 0) / 100, 2) AS gst_amount,
         ROUND(COALESCE(f.total_amount, 0) + (COALESCE(f.total_amount, 0) * COALESCE(f.gst_percent, 0) / 100), 2) AS total_amount_with_gst,
         f.apartment_id, f.status as flat_status,
@@ -145,6 +152,7 @@ router.get('/:id', verifyToken, async (req, res) => {
           i.parking_allotment, i.parking_slot_no, i.extra_parking_allotment, i.extra_parking_slot_no, i.extra_parking_charge,
           i.transformer_apartment, i.transformer_flat, i.corpus_fund, i.electricity_board_source, i.water_connection_details, i.id as infra_id,
         COALESCE((SELECT SUM(amount) FROM client_payments WHERE client_id = c.id), 0) as total_paid,
+          COALESCE((SELECT SUM(amount) + SUM(COALESCE(gst_amount, 0)) FROM client_payments WHERE client_id = c.id), 0) as total_paid_with_gst,
         (f.total_amount - COALESCE((SELECT SUM(amount) FROM client_payments WHERE client_id = c.id), 0)) as total_due
       FROM clients c
       LEFT JOIN flats f ON c.flat_id = f.id
@@ -185,6 +193,12 @@ router.post('/', verifyToken, async (req, res) => {
     if (idError) {
       return res.status(400).json({ error: idError });
     }
+
+    const normalizedPhoneRaw = normalizePhone(phone);
+    if (phone && normalizedPhoneRaw.length > 10) {
+      return res.status(400).json({ error: 'Phone number must be at most 10 digits' });
+    }
+    const normalizedPhone = normalizedPhoneRaw.slice(0, 10);
 
     await connection.beginTransaction();
 
@@ -229,7 +243,7 @@ router.post('/', verifyToken, async (req, res) => {
       [
         unique_client_id,
         name,
-        phone || null,
+        normalizedPhone || null,
         email || null,
         address || null,
         combinedPanAadhaar,
@@ -349,6 +363,12 @@ router.put('/:id', verifyToken, async (req, res) => {
       return res.status(400).json({ error: idError });
     }
 
+    const normalizedPhoneRaw = normalizePhone(phone);
+    if (phone && normalizedPhoneRaw.length > 10) {
+      return res.status(400).json({ error: 'Phone number must be at most 10 digits' });
+    }
+    const normalizedPhone = normalizedPhoneRaw.slice(0, 10);
+
     await connection.beginTransaction();
 
     // Check if client exists
@@ -463,7 +483,7 @@ router.put('/:id', verifyToken, async (req, res) => {
       'UPDATE clients SET name = ?, phone = ?, email = ?, address = ?, pan_aadhaar = ?, pan_number = ?, aadhaar_number = ?, purchase_date = ?, flat_id = ? WHERE id = ?',
       [
         name,
-        phone || null,
+        normalizedPhone || null,
         email || null,
         address || null,
         combinedPanAadhaar,

@@ -328,7 +328,8 @@ export type Client = {
   id: number; unique_client_id: string; name: string; phone: string; email: string;
   address: string; pan_aadhaar?: string; pan_number?: string; aadhaar_number?: string; purchase_date: string; flat_id: number;
   // Joined fields from flats + apartments + infrastructure
-  flat_number?: string; floor?: string; block?: string; sbu_area?: number; total_amount?: number; gst_percent?: number; gst_amount?: number; total_amount_with_gst?: number; flat_status?: 'available' | 'reserved' | 'booked';
+  flat_number?: string; floor?: string; block?: string; sbu_area?: number; carpet_area?: number; balcony_area?: number; terrace_area?: number; built_up_area?: number; undivided_share?: number;
+  total_amount?: number; gst_percent?: number; gst_amount?: number; total_amount_with_gst?: number; flat_status?: 'available' | 'reserved' | 'booked';
   property_name?: string; apartment_name?: string; apartment_id?: number;
   booking_id?: string; booking_status?: string; booking_amount?: number; booking_percentage?: number;
   parking_allotment?: boolean; parking_slot_no?: string;
@@ -337,7 +338,7 @@ export type Client = {
   corpus_fund?: number; electricity_board_source?: string; water_connection_details?: string;
   // Legacy compat (old projects-based)
   company_name?: string; contact_person?: string; city?: string; state?: string; gstin?: string; notes?: string;
-  total_projects?: number; total_project_amount?: number; total_paid?: number; total_due?: number;
+  total_projects?: number; total_project_amount?: number; total_paid?: number; total_paid_with_gst?: number; total_due?: number; total_due_with_gst?: number;
   created_at?: string; updated_at?: string;
 };
 

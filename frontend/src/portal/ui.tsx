@@ -36,10 +36,10 @@ export function PortalButton({
 
 /* ─── Input ─── */
 export function Input({
-  label, value, onChange, type = 'text', placeholder = '', disabled = false, required = false,
+  label, value, onChange, type = 'text', placeholder = '', disabled = false, required = false, maxLength, inputMode, autoComplete,
 }: {
   label: string; value: string; onChange: (v: string) => void; type?: string
-  placeholder?: string; disabled?: boolean; required?: boolean
+  placeholder?: string; disabled?: boolean; required?: boolean; maxLength?: number; inputMode?: React.HTMLAttributes<HTMLInputElement>['inputMode']; autoComplete?: string
 }) {
   const handleWheel = (event: React.WheelEvent<HTMLInputElement>) => {
     if (type === 'number') {
@@ -57,6 +57,9 @@ export function Input({
         onWheel={type === 'number' ? handleWheel : undefined}
         placeholder={placeholder}
         disabled={disabled}
+        maxLength={maxLength}
+        inputMode={inputMode}
+        autoComplete={autoComplete}
         className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] placeholder:text-slate-400 outline-none ring-orange-400/25 transition focus:border-orange-400 focus:ring-4 disabled:bg-slate-100 disabled:text-slate-500"
       />
     </div>

@@ -268,7 +268,7 @@ export const api = {
     const qs = params.toString();
     return request<DueReminder[]>(`/reminders/due${qs ? `?${qs}` : ''}`);
   },
-  sendBulkDueEmails: (data: { due_date?: string; reminder_ids?: number[]; subject?: string; html_template?: string }) =>
+  sendBulkDueEmails: (data: { due_date?: string; reminder_ids?: number[]; subject?: string; html_template?: string; attach_demand_letter?: boolean }) =>
     request<{ message: string; sent: number; failed: number; skipped: number; total: number }>('/reminders/bulk-email', { method: 'POST', body: JSON.stringify(data) }),
   previewDueReminderEmail: (id: number) => request<{ subject: string; html: string }>(`/reminders/email-preview/${id}`),
   exportDueReminderReport: (format: 'xlsx' | 'pdf' = 'xlsx') => download(`/reminders/export?format=${format}`),

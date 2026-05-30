@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Bell, Mail, FileText, Download, Clock, CheckCircle2, RefreshCw, Calendar, Send, Paperclip, Search, MessageCircle, AlertTriangle, CreditCard, CheckSquare, Square } from 'lucide-react'
+import { Bell, Mail, FileText, Download, Clock, CheckCircle2, RefreshCw, Calendar, Send, Paperclip, Search, MessageCircle, AlertTriangle, CreditCard, CheckSquare, Square, Loader2, X } from 'lucide-react'
 import { api, type DueReminder, type PendingDue, type ReminderLog, type ReminderStats } from '../api'
 import { usePortalToast } from '../toast'
 import { PortalCard, PortalButton, Modal, EmptyState, inr, Input } from '../ui'
@@ -73,6 +73,8 @@ export function ReminderLogsPage() {
   })
   const [bulkModal, setBulkModal] = useState(false)
   const [bulkSending, setBulkSending] = useState(false)
+  const [bulkAttachDL, setBulkAttachDL] = useState(false)
+  const [bulkSuccessModal, setBulkSuccessModal] = useState<{ sent: number; failed: number; skipped: number; total: number } | null>(null)
 
   const [editingTemplate, setEditingTemplate] = useState(false)
   const [bulkSubject, setBulkSubject] = useState('RG INFRA - Due Payment Reminder | {{apartment_name}}, Flat {{flat_unit}}')
@@ -155,13 +157,14 @@ export function ReminderLogsPage() {
 
   const handleBulkSend = async () => {
     setBulkSending(true)
+    setBulkModal(false)
     try {
       const res = await api.sendBulkDueEmails({
         ...(selectedIds.length ? { reminder_ids: selectedIds } : { due_date: bulkDate }),
         ...(editingTemplate ? { subject: bulkSubject, html_template: bulkTemplate } : {}),
+        attach_demand_letter: bulkAttachDL,
       })
-      toast.push({ tone: 'success', title: res.message })
-      setBulkModal(false)
+      setBulkSuccessModal({ sent: res.sent, failed: res.failed, skipped: res.skipped, total: res.total })
       load()
     } catch (e) {
       toast.push({ tone: 'error', title: e instanceof Error ? e.message : 'Bulk email failed' })
@@ -630,6 +633,24 @@ export function ReminderLogsPage() {
             <input type="checkbox" checked={allFilteredSelected} onChange={toggleSelectAll} className="h-4 w-4 rounded border-slate-300 text-orange-500 focus:ring-orange-400" />
             Select all filtered reminders
           </label>
+
+          {/* Attach Demand Letter Toggle */}
+          <label className="flex items-center gap-3 cursor-pointer rounded-xl border-2 border-orange-200 bg-orange-50/50 p-4 hover:bg-orange-50 transition">
+            <input type="checkbox" checked={bulkAttachDL} onChange={e => setBulkAttachDL(e.target.checked)}
+              className="h-5 w-5 rounded border-slate-300 text-orange-500 focus:ring-orange-400" />
+            <div className="flex-1">
+              <div className="flex items-center gap-2">
+                <Paperclip className="h-4 w-4 text-orange-500" />
+                <span className="text-sm font-bold text-slate-700">Attach Demand Letter PDF to each email</span>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                {bulkAttachDL
+                  ? 'A demand letter PDF will be generated & attached for each client. This may take longer.'
+                  : 'Only a plain due reminder email will be sent without attachment.'}
+              </p>
+            </div>
+          </label>
+
           <label className="flex items-center gap-3 rounded-xl border border-slate-200 p-3 text-sm font-semibold text-slate-700">
             <input type="checkbox" checked={editingTemplate} onChange={(e) => setEditingTemplate(e.target.checked)} className="h-4 w-4 rounded border-slate-300 text-orange-500 focus:ring-orange-400" />
             Edit email template for this send
@@ -653,10 +674,63 @@ export function ReminderLogsPage() {
         <div className="mt-6 flex justify-end gap-2">
           <PortalButton variant="outline" onClick={() => setBulkModal(false)}>Cancel</PortalButton>
           <PortalButton onClick={handleBulkSend} disabled={bulkSending || (selectedIds.length === 0 && !bulkDate)}>
-            {bulkSending ? 'Sending...' : 'Confirm & Send Bulk Email'}
+            {bulkAttachDL ? 'Send with Demand Letters' : 'Confirm & Send Bulk Email'}
           </PortalButton>
         </div>
       </Modal>
+
+      {/* ════ FULL-SCREEN SENDING LOADER ════ */}
+      {bulkSending && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-5 rounded-2xl bg-white px-12 py-10 shadow-2xl">
+            <Loader2 className="h-14 w-14 animate-spin text-orange-500" />
+            <div className="text-xl font-extrabold text-slate-900">Sending Emails...</div>
+            <p className="text-sm text-slate-500 text-center max-w-xs">
+              {bulkAttachDL
+                ? 'Generating demand letters & sending emails to all selected clients. This may take a few minutes...'
+                : 'Sending due reminder emails to all selected clients...'}
+            </p>
+            <div className="h-1.5 w-48 rounded-full bg-slate-100 overflow-hidden">
+              <div className="h-full w-1/2 rounded-full bg-gradient-to-r from-orange-400 to-orange-600 animate-pulse" />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ════ BULK SUCCESS POPUP ════ */}
+      {bulkSuccessModal && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="relative rounded-2xl bg-white px-10 py-8 shadow-2xl max-w-md w-full mx-4">
+            <button onClick={() => setBulkSuccessModal(null)} className="absolute top-4 right-4 p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition">
+              <X className="h-5 w-5" />
+            </button>
+            <div className="flex flex-col items-center gap-4">
+              <div className="h-16 w-16 rounded-full bg-emerald-50 flex items-center justify-center">
+                <CheckCircle2 className="h-9 w-9 text-emerald-500" />
+              </div>
+              <div className="text-xl font-extrabold text-slate-900">Emails Sent to All Clients!</div>
+              <div className="grid grid-cols-3 gap-4 w-full mt-2">
+                <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-3 text-center">
+                  <div className="text-2xl font-extrabold text-emerald-600">{bulkSuccessModal.sent}</div>
+                  <div className="text-[10px] font-bold uppercase text-emerald-500 tracking-wider">Sent</div>
+                </div>
+                <div className="rounded-xl bg-red-50 border border-red-200 p-3 text-center">
+                  <div className="text-2xl font-extrabold text-red-600">{bulkSuccessModal.failed}</div>
+                  <div className="text-[10px] font-bold uppercase text-red-500 tracking-wider">Failed</div>
+                </div>
+                <div className="rounded-xl bg-slate-50 border border-slate-200 p-3 text-center">
+                  <div className="text-2xl font-extrabold text-slate-600">{bulkSuccessModal.skipped}</div>
+                  <div className="text-[10px] font-bold uppercase text-slate-500 tracking-wider">Skipped</div>
+                </div>
+              </div>
+              <div className="text-xs text-slate-400 mt-1">Total: {bulkSuccessModal.total} client(s) processed</div>
+              <PortalButton onClick={() => setBulkSuccessModal(null)} className="mt-2 w-full">
+                Done
+              </PortalButton>
+            </div>
+          </div>
+        </div>
+      )}
 
 
 

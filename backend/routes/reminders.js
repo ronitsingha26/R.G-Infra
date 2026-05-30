@@ -1,12 +1,22 @@
 import { Router } from 'express';
+import { existsSync, mkdirSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import XLSX from 'xlsx-js-style';
 import pool from '../config/db.js';
 import { verifyToken } from '../middleware/auth.js';
 import { processDueReminders } from '../services/dueReminderCron.js';
 import { refreshDueReminderStatuses, syncDueReminders } from '../services/dueReminderSync.js';
 import { sendMail } from '../utils/mailer.js';
-import { dueReminderEmail } from '../utils/emailTemplates.js';
+import { dueReminderEmail, dueReminderWithDemandLetterEmail } from '../utils/emailTemplates.js';
 import { renderPdfBuffer } from '../services/pdf/helpers.js';
+import { writeDemandLetterPdf } from '../services/pdf/demandLetterPdf.js';
+import { ensurePaymentSchedule } from '../services/paymentLedger.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const DL_OUTPUT_DIR = join(__dirname, '..', 'generated_demand_letters');
+if (!existsSync(DL_OUTPUT_DIR)) mkdirSync(DL_OUTPUT_DIR, { recursive: true });
 
 const router = Router();
 
@@ -133,10 +143,85 @@ router.get('/due', verifyToken, async (req, res) => {
   }
 });
 
+// ─── Helper: fetch client data for demand letter generation ───────────────
+async function fetchClientForDL(clientId) {
+  const [clients] = await pool.query(`
+    SELECT c.*, 
+      f.flat_number, f.floor, f.block, f.sbu_area, f.total_amount, COALESCE(f.gst_percent, 0) AS flat_gst_percent,
+      a.name as apartment_name,
+      a.floor_north, a.floor_south, a.floor_east, a.floor_west,
+      p.land_north, p.land_south, p.land_east, p.land_west,
+      b.id as booking_record_id, b.booking_id
+    FROM clients c
+    LEFT JOIN flats f ON c.flat_id = f.id
+    LEFT JOIN apartments a ON f.apartment_id = a.id
+    LEFT JOIN properties p ON a.property_id = p.id
+    LEFT JOIN bookings b ON b.client_id = c.id AND b.status = 'active'
+    WHERE c.id = ?
+  `, [clientId]);
+  return clients[0] || null;
+}
+
+async function getBulkDemandPaymentContext(clientId) {
+  let dueInfo = null;
+  try {
+    dueInfo = await ensurePaymentSchedule(Number(clientId));
+  } catch (err) {
+    if (err.status !== 400) throw err;
+  }
+  const [[paidRow]] = await pool.query(
+    'SELECT COALESCE(SUM(amount), 0) AS total_paid, COALESCE(SUM(gst_amount), 0) AS total_paid_gst FROM client_payments WHERE client_id = ?',
+    [clientId]
+  );
+  const [[clientRow]] = await pool.query(
+    `SELECT COALESCE(b.flat_value, f.total_amount, 0) AS total_amount,
+        COALESCE(f.gst_percent, 0) AS flat_gst_percent
+     FROM clients c
+     LEFT JOIN flats f ON c.flat_id = f.id
+     LEFT JOIN bookings b ON b.client_id = c.id AND b.status = 'active'
+     WHERE c.id = ?`,
+    [clientId]
+  );
+  const actualPaid = Number(paidRow?.total_paid || 0);
+  const actualPaidGst = Number(paidRow?.total_paid_gst || 0);
+  const totalAmount = Number(clientRow?.total_amount || 0);
+  const paidAmount = actualPaid;
+  const paidAmountWithGst = paidAmount + actualPaidGst;
+  const [scheduleRows] = await pool.query(
+    `SELECT * FROM payment_schedules WHERE client_id = ? AND status != 'paid' ORDER BY stage_order ASC LIMIT 2`,
+    [clientId]
+  );
+  const currentSchedule = scheduleRows[0] || null;
+  const nextSchedule = scheduleRows[1] || null;
+  const baseDueAmount = Number(dueInfo?.current_due ?? dueInfo?.current_stage_due ?? Math.max(0, totalAmount - paidAmount));
+  const gstPercent = Number(clientRow?.flat_gst_percent || dueInfo?.gst_percent || 0);
+  const currentStageDue = Number(currentSchedule?.due_amount || dueInfo?.current_stage_due || baseDueAmount || 0);
+  const nextStageAmount = Number(nextSchedule?.amount || dueInfo?.next_stage_amount || 0);
+  const hasCarryOver = currentSchedule?.status === 'partial' && nextStageAmount > 0;
+  const dueAmount = hasCarryOver ? currentStageDue + nextStageAmount : baseDueAmount;
+  const gstAmount = Number((dueAmount * gstPercent) / 100);
+  return {
+    paidAmount,
+    paidAmountWithGst,
+    stageAmount: hasCarryOver ? dueAmount : Number(currentSchedule?.amount || dueInfo?.current_stage_due || Math.max(0, totalAmount - paidAmount)),
+    dueAmount,
+    duePercentage: totalAmount > 0 ? (dueAmount / totalAmount) * 100 : null,
+    currentStageName: currentSchedule?.stage_name || dueInfo?.current_stage || null,
+    currentDueDate: currentSchedule?.due_date || dueInfo?.current_due_date || null,
+    nextStageName: hasCarryOver ? null : (nextSchedule?.stage_name || dueInfo?.next_stage || null),
+    nextStageAmount: hasCarryOver ? 0 : Number(nextSchedule?.amount || dueInfo?.next_stage_amount || 0),
+    nextStagePercentage: hasCarryOver ? null : (nextSchedule?.percentage || (totalAmount > 0 && dueInfo?.next_stage_amount ? (Number(dueInfo.next_stage_amount) / totalAmount) * 100 : null)),
+    nextDueDate: hasCarryOver ? null : (nextSchedule?.due_date || dueInfo?.next_due_date || null),
+    gstPercent,
+    gstAmount,
+    totalPayable: dueAmount + gstAmount,
+  };
+}
+
 // ─── POST /api/reminders/bulk-email — Send selected/date due emails ───────
 router.post('/bulk-email', verifyToken, async (req, res) => {
   try {
-    const { due_date, reminder_ids = [], subject, html_template } = req.body;
+    const { due_date, reminder_ids = [], subject, html_template, attach_demand_letter = false } = req.body;
     if (!due_date && (!Array.isArray(reminder_ids) || reminder_ids.length === 0)) {
       return res.status(400).json({ error: 'Select a due date or at least one reminder' });
     }
@@ -173,10 +258,108 @@ router.post('/bulk-email', verifyToken, async (req, res) => {
         continue;
       }
 
+      let emailHtml;
+      let emailSubject;
+      let attachments = [];
+      let demandLetterId = null;
+
+      if (attach_demand_letter) {
+        // Generate demand letter PDF for this client
+        try {
+          const client = await fetchClientForDL(due.client_id);
+          if (client) {
+            const totalAmount = Number(client.total_amount) || 0;
+            const payCtx = await getBulkDemandPaymentContext(due.client_id);
+            const gstAmount = payCtx.gstAmount;
+            const grandTotal = payCtx.dueAmount + gstAmount;
+            const now = new Date();
+            const formattedDate = now.toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+            const safeClientName = (client.name || 'Client').replace(/[^a-zA-Z0-9 ]/g, '').trim().replace(/\s+/g, '_');
+            const dateStr = formattedDate.replace(/\//g, '-');
+            const fileName = `RG_INFRA_Demand_Letter_${safeClientName}_${dateStr}.pdf`;
+            const filePath = join(DL_OUTPUT_DIR, fileName);
+
+            await writeDemandLetterPdf({
+              clientName: client.name,
+              clientAddress: client.address,
+              flatNo: client.flat_number,
+              floor: client.floor,
+              block: client.block,
+              apartmentName: client.apartment_name,
+              area: client.sbu_area,
+              totalAmount,
+              stageAmount: payCtx.stageAmount,
+              paidAmount: payCtx.paidAmount,
+              paidAmountWithGst: payCtx.paidAmountWithGst,
+              dueAmount: payCtx.dueAmount,
+              gstPercent: payCtx.gstPercent,
+              gstAmount,
+              grandTotal,
+              duePercentage: payCtx.duePercentage,
+              currentStageName: payCtx.currentStageName,
+              dueDate: displayDate(payCtx.currentDueDate),
+              nextStageName: payCtx.nextStageName,
+              nextStageAmount: payCtx.nextStageAmount,
+              nextStagePercentage: payCtx.nextStagePercentage,
+              nextDueDate: displayDate(payCtx.nextDueDate),
+              landBoundaries: {
+                north: client.land_north, south: client.land_south,
+                east: client.land_east, west: client.land_west,
+              },
+              floorBoundaries: {
+                north: client.floor_north, south: client.floor_south,
+                east: client.floor_east, west: client.floor_west,
+              },
+              date: formattedDate,
+              bankDetails: {},
+              signatureImage: process.env.SIGNATURE_IMAGE_PATH,
+            }, filePath);
+
+            // Save demand letter record
+            const fileUrl = `/api/demand-letters/download/${fileName}`;
+            const [dlResult] = await pool.query(
+              `INSERT INTO demand_letters (client_id, file_name, file_url, generated_date, total_amount, paid_amount, due_amount, gst_percent, gst_amount, grand_total, email_sent) 
+               VALUES (?, ?, ?, NOW(), ?, ?, ?, ?, ?, ?, 1)`,
+              [due.client_id, fileName, fileUrl, totalAmount, payCtx.paidAmount, payCtx.dueAmount, payCtx.gstPercent, gstAmount, grandTotal]
+            );
+            demandLetterId = dlResult.insertId;
+
+            // Use demand letter email template
+            emailHtml = dueReminderWithDemandLetterEmail({
+              clientName: client.name,
+              apartmentName: due.apartment_name || client.apartment_name,
+              flatNo: due.flat_unit || client.flat_number,
+              paidAmount: payCtx.paidAmount,
+              dueAmount: payCtx.dueAmount,
+              gstAmount,
+              gstPercent: payCtx.gstPercent,
+              grandTotal,
+              dueDate: displayDate(payCtx.currentDueDate),
+              nextStageName: payCtx.nextStageName,
+              nextStageAmount: payCtx.nextStageAmount,
+              nextStagePercentage: payCtx.nextStagePercentage,
+              nextDueDate: displayDate(payCtx.nextDueDate),
+            });
+            emailSubject = `RG INFRA — Payment Due Notice | ${due.apartment_name || 'Property'}, Flat ${due.flat_unit || ''}`;
+            attachments = [{ filename: fileName, path: filePath, contentType: 'application/pdf' }];
+          }
+        } catch (dlErr) {
+          console.error(`Failed to generate demand letter for client ${due.client_id}:`, dlErr.message);
+          // Fall back to plain email if DL generation fails
+        }
+      }
+
+      // If no custom email was set (either no DL or DL failed), use standard template
+      if (!emailHtml) {
+        emailHtml = renderTemplate(html_template, due) || buildReminderEmail(due);
+        emailSubject = renderTemplate(subject, due) || `RG INFRA - Due Payment Reminder | ${due.apartment_name || 'Property'}, Flat ${due.flat_unit || ''}`;
+      }
+
       const emailResult = await sendMail({
         to: due.email,
-        subject: renderTemplate(subject, due) || `RG INFRA - Due Payment Reminder | ${due.apartment_name || 'Property'}, Flat ${due.flat_unit || ''}`,
-        html: renderTemplate(html_template, due) || buildReminderEmail(due),
+        subject: emailSubject,
+        html: emailHtml,
+        attachments,
       });
 
       const status = emailResult.success ? 'sent' : 'failed';

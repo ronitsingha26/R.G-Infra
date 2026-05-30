@@ -30,20 +30,21 @@ type ApartmentGroup = {
 // ─── Milestone definitions (same as WorkProjectionClientPage) ─────────────────
 const DEFAULT_MILESTONES = [
   { name: 'Booking', pct: 10 },
-  { name: 'Foundation', pct: 10 },
-  { name: 'Plinth', pct: 5 },
+  { name: 'Raft Foundation Complete', pct: 10 },
   { name: 'Ground Floor Slab', pct: 5 },
   { name: '1st Floor Slab', pct: 5 },
   { name: '2nd Floor Slab', pct: 5 },
   { name: '3rd Floor Slab', pct: 5 },
   { name: '4th Floor Slab', pct: 5 },
   { name: '5th Floor Slab', pct: 5 },
+  { name: '6th Floor Slab', pct: 5 },
+  { name: '7th Floor Slab', pct: 5 },
+  { name: '8th Floor Slab', pct: 5 },
+  { name: '9th Floor Slab', pct: 5 },
+  { name: '10th Floor Slab', pct: 5 },
   { name: 'Roof Slab', pct: 5 },
-  { name: 'Brick Work', pct: 5 },
-  { name: 'Plaster', pct: 5 },
-  { name: 'Flooring', pct: 5 },
-  { name: 'Doors & Windows', pct: 5 },
-  { name: 'Electrical & Plumbing', pct: 5 },
+  { name: 'Brick Work & Plaster', pct: 5 },
+  { name: 'Flooring', pct: 10 },
   { name: 'Handover', pct: 5 },
 ]
 
@@ -68,6 +69,7 @@ function BulkUpdateModal({ open, onClose, apartmentName, clients, onSuccess }: B
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
   const [results, setResults] = useState<{ name: string; status: 'ok' | 'skip' | 'error'; msg?: string }[]>([])
+  const [progressCount, setProgressCount] = useState(0)
   const [done, setDone] = useState(false)
 
   const minProgress = clients.length > 0 
@@ -88,28 +90,38 @@ function BulkUpdateModal({ open, onClose, apartmentName, clients, onSuccess }: B
     if (!selectedMilestone) return
     setSaving(true)
     setResults([])
+    setProgressCount(0)
 
     if (action === 'delete') {
-      try {
-        const clientIds = eligibleClients.map(c => c.id)
-        const resData = await api.bulkDeleteWorkProjection({ client_ids: clientIds, milestone_name: selectedMilestone })
-        setDone(true)
-        if (resData.deletedCount > 0) {
-          toast.push({ tone: 'success', title: `Successfully removed milestone for ${resData.deletedCount} clients` })
-          onSuccess()
-        } else {
-          toast.push({ tone: 'info', title: 'No matching milestones found to delete for these clients.' })
+      // For bulk delete: show per-client progress too
+      const res: typeof results = []
+      for (let i = 0; i < eligibleClients.length; i++) {
+        const client = eligibleClients[i]
+        try {
+          await api.bulkDeleteWorkProjection({ client_ids: [client.id], milestone_name: selectedMilestone })
+          res.push({ name: client.name, status: 'ok' })
+        } catch (err: any) {
+          res.push({ name: client.name, status: 'error', msg: err.message || 'Failed' })
         }
-      } catch (err: any) {
-        toast.push({ tone: 'error', title: err.message || 'Failed to delete' })
-      } finally {
-        setSaving(false)
+        setProgressCount(i + 1)
+        setResults([...res])
+      }
+      setSaving(false)
+      setDone(true)
+      const ok = res.filter(r => r.status === 'ok').length
+      if (ok > 0) {
+        toast.push({ tone: 'success', title: `Milestone removed for ${ok} of ${eligibleClients.length} clients` })
+        onSuccess()
+      } else {
+        toast.push({ tone: 'info', title: 'No matching milestones found to delete.' })
       }
       return
     }
 
+    // Bulk ADD — process one by one with live progress
     const res: typeof results = []
-    for (const client of eligibleClients) {
+    for (let i = 0; i < eligibleClients.length; i++) {
+      const client = eligibleClients[i]
       try {
         await api.createWorkProjection({
           client_id: client.id,
@@ -128,16 +140,16 @@ function BulkUpdateModal({ open, onClose, apartmentName, clients, onSuccess }: B
         res.push({ name: client.name, status: 'ok' })
       } catch (e) {
         const msg = e instanceof Error ? e.message : 'Failed'
-        // If "already recorded" — skip
         if (msg.toLowerCase().includes('already') || msg.toLowerCase().includes('duplicate')) {
           res.push({ name: client.name, status: 'skip', msg: 'Already recorded' })
         } else {
           res.push({ name: client.name, status: 'error', msg })
         }
       }
+      setProgressCount(i + 1)
+      setResults([...res])
     }
 
-    setResults(res)
     setSaving(false)
     setDone(true)
     const ok = res.filter(r => r.status === 'ok').length
@@ -146,7 +158,7 @@ function BulkUpdateModal({ open, onClose, apartmentName, clients, onSuccess }: B
   }
 
   const handleClose = () => {
-    setSelectedMilestone(''); setNotes(''); setResults([]); setDone(false)
+    setSelectedMilestone(''); setNotes(''); setResults([]); setDone(false); setProgressCount(0)
     onClose()
   }
 
@@ -246,23 +258,73 @@ function BulkUpdateModal({ open, onClose, apartmentName, clients, onSuccess }: B
             </>
           )}
 
+          {/* Live progress during saving */}
+          {saving && (
+            <div className="rounded-xl border border-orange-100 bg-orange-50 p-3">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-bold text-orange-700">
+                  {action === 'add' ? 'Updating' : 'Removing'} progress...
+                </span>
+                <span className="text-xs font-bold text-orange-700">
+                  {progressCount} / {eligibleClients.length} clients
+                </span>
+              </div>
+              <div className="h-2 w-full overflow-hidden rounded-full bg-orange-100">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-orange-400 to-orange-600 transition-all duration-300"
+                  style={{ width: `${eligibleClients.length > 0 ? (progressCount / eligibleClients.length) * 100 : 0}%` }}
+                />
+              </div>
+              {progressCount > 0 && results.length > 0 && (
+                <div className="mt-2 text-xs text-orange-600 font-medium">
+                  Last: {results[results.length - 1]?.name}
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="flex justify-end gap-3 mt-4">
-            <PortalButton variant="outline" onClick={handleClose}>Cancel</PortalButton>
+            <PortalButton variant="outline" onClick={handleClose} disabled={saving}>Cancel</PortalButton>
             <PortalButton
               onClick={handleBulkSave}
               disabled={saving || !selectedMilestone || eligibleClients.length === 0}
               className={action === 'delete' ? '!bg-red-500 hover:!bg-red-600 focus:!ring-red-500/20' : ''}
             >
               <Save className="h-4 w-4" />
-              {saving ? `Processing...` : (action === 'add' ? `Update All ${eligibleClients.length} Clients` : `Delete Milestone for ${eligibleClients.length} Clients`)}
+              {saving
+                ? `${action === 'add' ? 'Updating' : 'Deleting'} ${progressCount}/${eligibleClients.length}...`
+                : (action === 'add' ? `Update All ${eligibleClients.length} Clients` : `Delete Milestone for ${eligibleClients.length} Clients`)}
             </PortalButton>
           </div>
         </div>
       ) : (
         /* Results View */
         <div className="space-y-4">
-          <div className="text-sm font-bold text-slate-700 mb-2">Update Results:</div>
-          <div className="max-h-72 overflow-y-auto space-y-2">
+          {/* Summary bar */}
+          {(() => {
+            const ok = results.filter(r => r.status === 'ok').length
+            const skip = results.filter(r => r.status === 'skip').length
+            const err = results.filter(r => r.status === 'error').length
+            return (
+              <div className="grid grid-cols-3 gap-3">
+                <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-3 text-center">
+                  <div className="text-2xl font-extrabold text-emerald-600">{ok}</div>
+                  <div className="text-[10px] font-bold uppercase text-emerald-500 tracking-wider">{action === 'add' ? 'Updated' : 'Removed'}</div>
+                </div>
+                <div className="rounded-xl bg-slate-50 border border-slate-200 p-3 text-center">
+                  <div className="text-2xl font-extrabold text-slate-500">{skip}</div>
+                  <div className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">Skipped</div>
+                </div>
+                <div className="rounded-xl bg-red-50 border border-red-200 p-3 text-center">
+                  <div className="text-2xl font-extrabold text-red-600">{err}</div>
+                  <div className="text-[10px] font-bold uppercase text-red-500 tracking-wider">Failed</div>
+                </div>
+              </div>
+            )
+          })()}
+
+          <div className="text-sm font-bold text-slate-700">Detailed Results:</div>
+          <div className="max-h-60 overflow-y-auto space-y-2">
             {results.map((r, i) => (
               <div key={i} className={`flex items-center justify-between rounded-xl p-3 text-sm border ${
                 r.status === 'ok' ? 'border-emerald-100 bg-emerald-50' :
@@ -274,13 +336,13 @@ function BulkUpdateModal({ open, onClose, apartmentName, clients, onSuccess }: B
                   r.status === 'ok' ? 'text-emerald-600' :
                   r.status === 'skip' ? 'text-slate-400' : 'text-red-600'
                 }`}>
-                  {r.status === 'ok' ? '✅ Updated' : r.status === 'skip' ? '⏭ Skipped' : `❌ ${r.msg}`}
+                  {r.status === 'ok' ? (action === 'add' ? '✅ Updated' : '✅ Removed') : r.status === 'skip' ? '⏭ Skipped' : `❌ ${r.msg}`}
                 </span>
               </div>
             ))}
           </div>
           <div className="flex justify-end">
-            <PortalButton onClick={handleClose}>Close</PortalButton>
+            <PortalButton onClick={handleClose}>Done</PortalButton>
           </div>
         </div>
       )}

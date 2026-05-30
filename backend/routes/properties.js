@@ -102,19 +102,19 @@ router.delete('/:id', verifyToken, async (req, res) => {
         const clientIds = cls.map(c => c.id);
 
         if (clientIds.length > 0) {
-          // Delete client-linked data
+          // Delete client-linked data (only tables that actually have client_id)
           await connection.query('DELETE FROM work_projections WHERE client_id IN (?)', [clientIds]);
-          await connection.query('DELETE FROM work_projection_milestones WHERE client_id IN (?)', [clientIds]);
+          // NOTE: work_projection_milestones is a global master table — no client_id column, skip it
           await connection.query('DELETE FROM demand_letters WHERE client_id IN (?)', [clientIds]);
           await connection.query('DELETE FROM reminder_logs WHERE client_id IN (?)', [clientIds]);
           await connection.query('DELETE FROM communication_logs WHERE client_id IN (?)', [clientIds]);
           await connection.query('DELETE FROM communication_history WHERE client_id IN (?)', [clientIds]);
           await connection.query('DELETE FROM client_payments WHERE client_id IN (?)', [clientIds]);
           await connection.query('DELETE FROM payment_schedules WHERE client_id IN (?)', [clientIds]);
-          await connection.query('DELETE FROM payment_stages WHERE client_id IN (?)', [clientIds]);
+          // NOTE: payment_stages uses apartment_id, not client_id — skip it
           await connection.query('DELETE FROM dues WHERE client_id IN (?)', [clientIds]);
           await connection.query('DELETE FROM due_reminders WHERE client_id IN (?)', [clientIds]);
-          await connection.query('DELETE FROM notifications WHERE client_id IN (?)', [clientIds]).catch(() => {});
+          // NOTE: notifications uses user_id not client_id — skip it
           await connection.query('DELETE FROM invoices WHERE client_id IN (?)', [clientIds]).catch(() => {});
           await connection.query('DELETE FROM bookings WHERE client_id IN (?)', [clientIds]);
           await connection.query('DELETE FROM clients WHERE id IN (?)', [clientIds]);

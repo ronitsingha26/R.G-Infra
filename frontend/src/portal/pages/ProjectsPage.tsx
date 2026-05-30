@@ -15,7 +15,7 @@
 import {
   BarChart3, Building2, ChevronDown, ChevronRight, Download, Edit, Home,
   Plus, Search, Trash2, Upload, Users, Briefcase, X, FileSpreadsheet,
-  CheckCircle2, AlertCircle, Loader2
+  CheckCircle2, AlertCircle, Loader2, LayoutGrid, List
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import React from 'react'
@@ -32,6 +32,7 @@ export function ProjectsPage() {
   const toast = usePortalToast()
   const navigate = useNavigate()
   const [search, setSearch] = useState('')
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
 
   // Data
   const [properties, setProperties] = useState<Property[]>([])
@@ -647,6 +648,22 @@ export function ProjectsPage() {
                                                         </button>
                                                       </div>
                                                       <div className="flex items-center gap-2 flex-wrap">
+                                                        <div className="flex items-center bg-slate-100 rounded-lg p-1 mr-2 border border-slate-200">
+                                                          <button
+                                                            onClick={(e) => { e.stopPropagation(); setViewMode('grid') }}
+                                                            className={`p-1.5 rounded-md transition ${viewMode === 'grid' ? 'bg-white shadow-sm text-orange-600 font-bold' : 'text-slate-500 hover:text-slate-700'}`}
+                                                            title="Grid View"
+                                                          >
+                                                            <LayoutGrid className="h-4 w-4" />
+                                                          </button>
+                                                          <button
+                                                            onClick={(e) => { e.stopPropagation(); setViewMode('list') }}
+                                                            className={`p-1.5 rounded-md transition ${viewMode === 'list' ? 'bg-white shadow-sm text-orange-600 font-bold' : 'text-slate-500 hover:text-slate-700'}`}
+                                                            title="List View"
+                                                          >
+                                                            <List className="h-4 w-4" />
+                                                          </button>
+                                                        </div>
                                                         <PortalButton onClick={() => openAddFlat(apt.id)} variant="outline" className="!py-1.5 !px-3 !text-xs">
                                                           <Plus className="h-3.5 w-3.5" /> Add Flat
                                                         </PortalButton>
@@ -666,6 +683,42 @@ export function ProjectsPage() {
                                                     {filteredFlats.length === 0 ? (
                                                       <div className="text-sm text-slate-400 text-center py-6 border border-slate-100 rounded-xl">
                                                         {currentFilter === 'all' ? 'No flats found' : `No ${currentFilter} flats`}
+                                                      </div>
+                                                    ) : viewMode === 'grid' ? (
+                                                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-4 mt-2">
+                                                        {filteredFlats.map(flat => {
+                                                          const client = getClientForFlat(flat.id)
+                                                          return (
+                                                            <div 
+                                                              key={flat.id}
+                                                              className={`group relative flex flex-col items-center justify-center p-4 rounded-xl border-2 transition-all hover:shadow-md cursor-pointer ${flat.is_available ? 'bg-white border-emerald-100 hover:border-emerald-300' : 'bg-white border-red-100 hover:border-red-300'}`}
+                                                              onClick={(e) => { e.stopPropagation(); openEditFlat(flat) }}
+                                                            >
+                                                              {/* Actions */}
+                                                              <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 z-10">
+                                                                <button onClick={(e) => { e.stopPropagation(); handleDeleteFlat(flat) }} className="p-1.5 rounded-md bg-white shadow-sm border border-slate-200 text-slate-500 hover:text-red-500 transition" title="Delete Flat">
+                                                                  <Trash2 className="h-3 w-3" />
+                                                                </button>
+                                                              </div>
+
+                                                              <div className={`text-2xl font-black mb-1.5 ${flat.is_available ? 'text-emerald-600' : 'text-red-600'}`}>
+                                                                {flat.flat_number}
+                                                              </div>
+                                                              <div className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-md ${flat.is_available ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'}`}>
+                                                                {flat.is_available ? 'Available' : 'Booked'}
+                                                              </div>
+                                                              {!flat.is_available && client && (
+                                                                <button
+                                                                  onClick={(e) => { e.stopPropagation(); navigate(`/portal/clients/${client.id}`) }}
+                                                                  className="mt-3 text-xs font-bold text-slate-600 hover:text-orange-600 truncate w-full text-center"
+                                                                  title={`View ${client.name}'s profile`}
+                                                                >
+                                                                  {client.name}
+                                                                </button>
+                                                              )}
+                                                            </div>
+                                                          )
+                                                        })}
                                                       </div>
                                                     ) : (
                                                       <div className="overflow-hidden rounded-xl border border-slate-200">

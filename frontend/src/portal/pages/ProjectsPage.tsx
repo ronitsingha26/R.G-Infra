@@ -65,6 +65,13 @@ export function ProjectsPage() {
   const [aptModal, setAptModal] = useState<{ open: boolean; propId: number; editing?: Apartment }>({ open: false, propId: 0 })
   const [flatModal, setFlatModal] = useState<{ open: boolean; aptId: number; editing?: Flat }>({ open: false, aptId: 0 })
 
+  // Flat Data Upload modal (top-level with property selector)
+  const [flatUploadModal, setFlatUploadModal] = useState(false)
+  const [flatUploadPropId, setFlatUploadPropId] = useState<number | ''>('')
+  const [flatUploadParking, setFlatUploadParking] = useState('')
+  const [flatUploadFile, setFlatUploadFile] = useState<File | null>(null)
+  const [flatUploadSaving, setFlatUploadSaving] = useState(false)
+
   const emptyPropForm = {
     name: '',
     address: '',
@@ -451,6 +458,9 @@ export function ProjectsPage() {
             </div>
             <PortalButton variant="outline" onClick={() => setShowSummary(true)}>
               <BarChart3 className="h-4 w-4" /> Summary
+            </PortalButton>
+            <PortalButton onClick={() => { setFlatUploadPropId(''); setFlatUploadParking(''); setFlatUploadFile(null); setFlatUploadSaving(false); setFlatUploadModal(true) }}>
+              <Upload className="h-4 w-4" /> Flat Data Upload
             </PortalButton>
             <PortalButton onClick={openAddProp}><Plus className="h-4 w-4" /> Add Property</PortalButton>
           </div>
@@ -1044,6 +1054,105 @@ export function ProjectsPage() {
             </div>
           </>
         )}
+      </Modal>
+
+      {/* ─── Flat Data Upload Modal (Top-Level) ─── */}
+      <Modal
+        open={flatUploadModal}
+        onClose={() => setFlatUploadModal(false)}
+        title="📊 Flat Data Upload"
+        wide
+        closeOnBackdropClick={false}
+      >
+        <div className="space-y-6">
+          {/* Property Selector */}
+          <div>
+            <label className="text-xs font-bold uppercase tracking-wide text-slate-500 mb-2 block">Select Property <span className="text-red-500">*</span></label>
+            <select
+              value={flatUploadPropId}
+              onChange={e => {
+                const val = e.target.value
+                if (val === 'add_new') {
+                  setFlatUploadModal(false)
+                  openAddProp()
+                  return
+                }
+                setFlatUploadPropId(val ? Number(val) : '')
+              }}
+              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-base font-medium text-slate-900 shadow-sm outline-none ring-orange-400/25 transition focus:border-orange-400 focus:ring-4"
+            >
+              <option value="">Choose a property...</option>
+              {properties.map(p => (
+                <option key={p.id} value={p.id}>{p.name}{p.address ? ` — ${p.address}` : ''}</option>
+              ))}
+              <option value="add_new" className="font-bold text-orange-600">＋ Add New Property</option>
+            </select>
+          </div>
+
+          {/* Parking Slots */}
+          <div>
+            <Input
+              label="Default Parking Slots per Block (Optional)"
+              value={flatUploadParking}
+              onChange={v => setFlatUploadParking(v)}
+              type="number"
+              placeholder="e.g. 60"
+            />
+            <div className="mt-2 text-xs text-slate-500">
+              This number of parking slots will be assigned to any newly created block.
+            </div>
+          </div>
+
+          {/* Excel Upload */}
+          <div>
+            <div className="text-xs font-bold uppercase tracking-wide text-slate-500 mb-2">Upload Flats Data (Excel) <span className="text-red-500">*</span></div>
+            <div className="space-y-2 bg-slate-50 p-4 rounded-xl border border-slate-200">
+              <input
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                onChange={e => {
+                  const file = e.target.files?.[0]
+                  if (file) setFlatUploadFile(file)
+                }}
+                className="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100"
+              />
+              <div className="text-xs text-slate-500 mt-2">
+                Upload an Excel file containing flats data. Blocks will be auto-assigned in order as Block A, Block B, Block C, and continue alphabetically for more sheets.
+              </div>
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="flex justify-end gap-3">
+            <PortalButton variant="outline" onClick={() => setFlatUploadModal(false)} disabled={flatUploadSaving}>Cancel</PortalButton>
+            <PortalButton
+              onClick={async () => {
+                if (!flatUploadPropId || !flatUploadFile) return
+                setFlatUploadSaving(true)
+                try {
+                  await api.bulkUploadFlatDetails(Number(flatUploadPropId), flatUploadFile, flatUploadParking)
+                  try {
+                    await api.bulkUploadBookingStatus(Number(flatUploadPropId), flatUploadFile)
+                  } catch { /* ignore if no booking sheet */ }
+                  toast.push({ tone: 'success', title: 'Blocks and Flats uploaded successfully!' })
+                  setFlatUploadModal(false)
+                  loadData()
+                } catch (e) {
+                  toast.push({ tone: 'error', title: e instanceof Error ? e.message : 'Upload failed' })
+                } finally {
+                  setFlatUploadSaving(false)
+                }
+              }}
+              disabled={flatUploadSaving || !flatUploadPropId || !flatUploadFile}
+            >
+              {flatUploadSaving ? (
+                <><Loader2 className="h-4 w-4 animate-spin" /> Uploading...</>
+              ) : (
+                <><Upload className="h-4 w-4" /> Upload Flats</>
+              )}
+            </PortalButton>
+          </div>
+        </div>
       </Modal>
 
       {/* ─── Add/Edit Flat Modal ─── */}

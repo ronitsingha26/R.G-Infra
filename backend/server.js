@@ -130,6 +130,7 @@ app.get('/api/health', (_req, res) =>
 // ─── Serve Frontend Build (Production only) ────────────────────────────────
 // In production, Express serves the Vite-built React app as static files.
 const pathsToCheck = [
+  join(__dirname, 'public'),                  // ✅ backend/public/ (Hostinger zip structure)
   join(__dirname, '..', 'frontend', 'dist'), // Standard zip structure
   join(__dirname, 'dist'),                   // Legacy/fallback structure
   join(process.cwd(), 'frontend', 'dist'),   // Relative to CWD

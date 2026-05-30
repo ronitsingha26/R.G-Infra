@@ -19,7 +19,7 @@ export type PortalNavItem = {
 
 export const portalNav: PortalNavItem[] = [
   { label: 'Dashboard', to: '/portal/dashboard', Icon: Activity },
-  { label: 'Properties', to: '/portal/projects', Icon: Building2 },
+  { label: 'Flat Master', to: '/portal/projects', Icon: Building2 },
   { label: 'Client Master', to: '/portal/clients', Icon: BriefcaseBusiness },
   { label: 'Work Projection', to: '/portal/work-projection', Icon: HardHat },
   { label: 'Due Reminders', to: '/portal/reminders', Icon: Bell },

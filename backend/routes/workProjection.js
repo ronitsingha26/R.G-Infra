@@ -363,6 +363,50 @@ router.post('/', verifyToken, upload.single('proof_image'), async (req, res) => 
   }
 });
 
+// ─── POST /api/work-projection/bulk-delete — Bulk remove a milestone ──────────
+router.post('/bulk-delete', verifyToken, async (req, res) => {
+  try {
+    const { client_ids, milestone_name } = req.body;
+    if (!client_ids || !client_ids.length || !milestone_name) {
+      return res.status(400).json({ error: 'client_ids array and milestone_name are required' });
+    }
+
+    // Identify which clients actually have this milestone completed
+    const [existing] = await pool.query(
+      'SELECT id, client_id FROM work_projections WHERE client_id IN (?) AND milestone_name = ?',
+      [client_ids, milestone_name]
+    );
+
+    if (existing.length === 0) {
+      return res.json({ message: 'No matching milestones found to delete', deletedCount: 0 });
+    }
+
+    const idsToDelete = existing.map(e => e.id);
+    const clientsToUpdate = [...new Set(existing.map(e => e.client_id))];
+
+    // Delete work projections
+    await pool.query('DELETE FROM work_projections WHERE id IN (?)', [idsToDelete]);
+
+    // Delete corresponding payment_schedules that are pending
+    await pool.query(
+      'DELETE FROM payment_schedules WHERE client_id IN (?) AND stage_name = ? AND status != "paid"',
+      [clientsToUpdate, milestone_name]
+    );
+
+    // Recalculate dues for affected clients
+    for (const clientId of clientsToUpdate) {
+      await recalculateDues(clientId, pool);
+      await syncDueReminders(clientId, pool);
+      req.app.get('io')?.emit('data_changed', { type: 'work_projection_updated', data: { client_id: clientId } });
+    }
+
+    res.json({ message: `Successfully removed milestone for ${clientsToUpdate.length} clients`, deletedCount: clientsToUpdate.length });
+  } catch (err) {
+    console.error('Bulk delete work projection error:', err);
+    res.status(500).json({ error: 'Server error during bulk delete' });
+  }
+});
+
 // ─── PUT /api/work-projection/:id — Edit a milestone ───────────────────────
 router.put('/:id', verifyToken, upload.single('proof_image'), async (req, res) => {
   try {

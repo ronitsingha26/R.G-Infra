@@ -17,7 +17,7 @@ const emptyForm = {
   name: '', phone: '', email: '', address: '', pan_number: '', aadhaar_number: '', purchase_date: '',
   property_id: '', apartment_id: '', flat_id: '',
   flat_price: '', gst_percent: '',
-  booking_amount: '', booking_percentage: '',
+  booking_amount: '', booking_percentage: '', corpus_fund: '',
   parking_allotment: false, parking_slot_no: '',
   extra_parking_allotment: false, 
   extra_parkings: [{ type: 'car' as 'bike' | 'car', count: '1', slot: '', charge: '' }],
@@ -47,10 +47,6 @@ export function ClientsPage() {
   const [form, setForm] = useState({ ...emptyForm })
   const [saving, setSaving] = useState(false)
 
-  const formatNumber = (value: number) => {
-    if (!Number.isFinite(value)) return ''
-    return String(Math.round(value * 100) / 100)
-  }
 
   const [properties, setProperties] = useState<Property[]>([])
   const [apartments, setApartments] = useState<Apartment[]>([])
@@ -132,8 +128,7 @@ export function ClientsPage() {
         flat_id: Number(form.flat_id),
         flat_price: form.flat_price ? Number(form.flat_price) : undefined,
         gst_percent: form.gst_percent ? Number(form.gst_percent) : undefined,
-        booking_amount: form.booking_amount ? Number(form.booking_amount) : undefined,
-        booking_percentage: form.booking_percentage ? Number(form.booking_percentage) : undefined,
+        corpus_fund: form.corpus_fund ? Number(form.corpus_fund) : undefined,
         parking_allotment: form.parking_allotment,
         parking_slot_no: form.parking_slot_no || undefined,
         extra_parking_allotment: form.extra_parking_allotment,
@@ -386,32 +381,9 @@ export function ClientsPage() {
 
           <div className="mt-3 grid gap-3 max-w-md sm:grid-cols-2">
             <Input
-              label="Booking Percentage (%)"
-              value={form.booking_percentage}
-              onChange={(v) => {
-                if (!v) return setForm((s) => ({ ...s, booking_percentage: '', booking_amount: '' }))
-                const pct = Number(v)
-                const flatPrice = Number(form.flat_price || 0)
-                if (Number.isNaN(pct) || flatPrice === 0) return setForm((s) => ({ ...s, booking_percentage: v }))
-                const amount = (flatPrice * pct) / 100
-                setForm((s) => ({ ...s, booking_percentage: v, booking_amount: formatNumber(amount) }))
-              }}
-              type="number"
-              placeholder="e.g. 10"
-            />
-            <Input
-              label="Booking Amount (₹)"
-              value={form.booking_amount}
-              onChange={(v) => {
-                if (!v) return setForm((s) => ({ ...s, booking_amount: '', booking_percentage: '' }))
-                const amt = Number(v)
-                const flatPrice = Number(form.flat_price || 0)
-                if (Number.isNaN(amt) || flatPrice === 0) {
-                  return setForm((s) => ({ ...s, booking_amount: v }))
-                }
-                const pct = (amt / flatPrice) * 100
-                setForm((s) => ({ ...s, booking_amount: v, booking_percentage: formatNumber(pct) }))
-              }}
+              label="Corpus Fund Amount (₹)"
+              value={form.corpus_fund}
+              onChange={(v) => setForm((s) => ({ ...s, corpus_fund: v }))}
               type="number"
             />
           </div>

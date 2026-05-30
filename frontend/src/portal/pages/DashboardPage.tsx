@@ -30,24 +30,26 @@ ChartJS.defaults.font.family = "'Inter', 'system-ui', sans-serif"
 ChartJS.defaults.color = '#64748b'
 
 // ─── Stat Card ─────────────────────────────────────────────────────────────
-function StatCard({ title, value, sub, Icon, iconBg, iconColor, trend }: {
+function StatCard({ title, value, sub, Icon, iconBg, iconColor, trend, gradientClass }: {
   title: string; value: string; sub: string; Icon: typeof HardHat;
-  iconBg: string; iconColor: string; trend?: 'up' | 'down' | 'neutral'
+  iconBg: string; iconColor: string; trend?: 'up' | 'down' | 'neutral',
+  gradientClass?: string
 }) {
+  const isColor = !!gradientClass;
   return (
-    <PortalCard>
+    <PortalCard className={gradientClass}>
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1">
-          <div className="text-xs font-semibold text-slate-400 uppercase tracking-wide">{title}</div>
-          <div className="mt-2 text-2xl font-extrabold text-slate-900">{value}</div>
+          <div className={`text-xs font-semibold uppercase tracking-wide ${isColor ? 'text-white/80' : 'text-slate-400'}`}>{title}</div>
+          <div className={`mt-2 text-2xl font-extrabold ${isColor ? 'text-white drop-shadow-sm' : 'text-slate-900'}`}>{value}</div>
           <div className={`mt-1.5 text-xs font-semibold ${
-            trend === 'up' ? 'text-emerald-600' : trend === 'down' ? 'text-red-500' : 'text-slate-500'
+            isColor ? 'text-white/90 drop-shadow-sm' : trend === 'up' ? 'text-emerald-600' : trend === 'down' ? 'text-red-500' : 'text-slate-500'
           }`}>
             {trend === 'up' && '↑ '}{trend === 'down' && '↓ '}{sub}
           </div>
         </div>
-        <div className={`flex h-12 w-12 items-center justify-center rounded-2xl ${iconBg}`}>
-          <Icon className={`h-5 w-5 ${iconColor}`} />
+        <div className={`flex h-12 w-12 items-center justify-center rounded-2xl ${isColor ? 'bg-white/25 backdrop-blur-sm shadow-inner' : iconBg}`}>
+          <Icon className={`h-6 w-6 ${isColor ? 'text-white drop-shadow-sm' : iconColor}`} />
         </div>
       </div>
     </PortalCard>
@@ -323,10 +325,10 @@ export function DashboardPage() {
 
       {/* ─── KPI Cards ─── */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard title="Total Sales" value={inr(s.totalFlatSales)} sub={`${s.totalClients} clients`} Icon={TrendingUp} iconBg="bg-orange-50" iconColor="text-orange-500" trend="up" />
-        <StatCard title="Collected" value={inr(s.totalFlatPaid)} sub={`${s.totalFlatSales > 0 ? Math.round((s.totalFlatPaid / s.totalFlatSales) * 100) : 0}% of total`} Icon={IndianRupee} iconBg="bg-emerald-50" iconColor="text-emerald-500" trend="up" />
-        <StatCard title="Due Amount" value={inr(s.totalFlatDue)} sub={`${dueList.length} clients pending`} Icon={AlertTriangle} iconBg="bg-red-50" iconColor="text-red-500" trend={s.totalFlatDue > 0 ? 'down' : 'neutral'} />
-        <StatCard title="Properties" value={`${s.totalApartments || s.totalProjects || 0} Apts`} sub={`${s.bookedFlats || s.activeProjects || 0} flats booked`} Icon={Building2} iconBg="bg-blue-50" iconColor="text-blue-500" trend="neutral" />
+        <StatCard title="Total Sales" value={inr(s.totalFlatSales)} sub={`${s.totalClients} clients`} Icon={TrendingUp} iconBg="" iconColor="" trend="up" gradientClass="!bg-gradient-to-br !from-orange-400 !to-orange-600 !border-orange-500 shadow-orange-500/20" />
+        <StatCard title="Collected" value={inr(s.totalFlatPaid)} sub={`${s.totalFlatSales > 0 ? Math.round((s.totalFlatPaid / s.totalFlatSales) * 100) : 0}% of total`} Icon={IndianRupee} iconBg="" iconColor="" trend="up" gradientClass="!bg-gradient-to-br !from-emerald-400 !to-emerald-600 !border-emerald-500 shadow-emerald-500/20" />
+        <StatCard title="Due Amount" value={inr(s.totalFlatDue)} sub={`${dueList.length} clients pending`} Icon={AlertTriangle} iconBg="" iconColor="" trend={s.totalFlatDue > 0 ? 'down' : 'neutral'} gradientClass="!bg-gradient-to-br !from-red-400 !to-red-600 !border-red-500 shadow-red-500/20" />
+        <StatCard title="Properties" value={`${s.totalApartments || s.totalProjects || 0} Apts`} sub={`${s.bookedFlats || s.activeProjects || 0} flats booked`} Icon={Building2} iconBg="" iconColor="" trend="neutral" gradientClass="!bg-gradient-to-br !from-blue-400 !to-blue-600 !border-blue-500 shadow-blue-500/20" />
       </div>
 
       {/* ─── Row 1: Collection Trend + Due vs Paid ─── */}

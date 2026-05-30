@@ -45,7 +45,7 @@ router.get('/', verifyToken, async (req, res) => {
         a.name as apartment_name, p.name as property_name,
         b.booking_id, b.status as booking_status, b.booking_amount, b.booking_percentage,
           i.parking_allotment, i.parking_slot_no, i.extra_parking_allotment, i.extra_parking_slot_no, i.extra_parking_charge,
-          i.transformer_apartment, i.transformer_flat, i.corpus_fund, i.electricity_board_source, i.water_connection_details,
+          i.transformer_apartment, i.transformer_flat, i.electricity_board_source, i.water_connection_details,
         COALESCE((SELECT SUM(amount) FROM client_payments WHERE client_id = c.id), 0) as total_paid,
           COALESCE((SELECT SUM(amount) + SUM(COALESCE(gst_amount, 0)) FROM client_payments WHERE client_id = c.id), 0) as total_paid_with_gst,
         (f.total_amount - COALESCE((SELECT SUM(amount) FROM client_payments WHERE client_id = c.id), 0)) as total_due
@@ -150,7 +150,7 @@ router.get('/:id', verifyToken, async (req, res) => {
         a.name as apartment_name, p.name as property_name,
         b.id as booking_record_id, b.booking_id, b.status as booking_status, b.booking_amount, b.booking_percentage,
           i.parking_allotment, i.parking_slot_no, i.extra_parking_allotment, i.extra_parking_slot_no, i.extra_parking_charge,
-          i.transformer_apartment, i.transformer_flat, i.corpus_fund, i.electricity_board_source, i.water_connection_details, i.id as infra_id,
+          i.transformer_apartment, i.transformer_flat, i.electricity_board_source, i.water_connection_details, i.id as infra_id,
         COALESCE((SELECT SUM(amount) FROM client_payments WHERE client_id = c.id), 0) as total_paid,
           COALESCE((SELECT SUM(amount) + SUM(COALESCE(gst_amount, 0)) FROM client_payments WHERE client_id = c.id), 0) as total_paid_with_gst,
         (f.total_amount - COALESCE((SELECT SUM(amount) FROM client_payments WHERE client_id = c.id), 0)) as total_due
@@ -172,7 +172,7 @@ router.get('/:id', verifyToken, async (req, res) => {
 });
 
 // POST /api/clients (Onboarding flow)
-router.post('/', verifyToken, async (req, res) => {
+router.post('/', async (req, res) => {
   const connection = await pool.getConnection();
   try {
     const { 
@@ -239,7 +239,7 @@ router.post('/', verifyToken, async (req, res) => {
     // 3. Insert Client
     const combinedPanAadhaar = pan_aadhaar || [normalizedPan, normalizedAadhaar].filter(Boolean).join(' / ') || null;
     const [clientResult] = await connection.query(
-      'INSERT INTO clients (unique_client_id, name, phone, email, address, pan_aadhaar, pan_number, aadhaar_number, purchase_date, flat_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO clients (unique_client_id, name, phone, email, address, pan_aadhaar, pan_number, aadhaar_number, purchase_date, flat_id, corpus_fund) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [
         unique_client_id,
         name,
@@ -251,6 +251,7 @@ router.post('/', verifyToken, async (req, res) => {
         normalizedAadhaar || null,
         purchase_date || null,
         flat_id,
+        corpus_fund || null,
       ]
     );
 
@@ -297,8 +298,8 @@ router.post('/', verifyToken, async (req, res) => {
 
     await connection.query(
       `INSERT INTO infrastructure_details 
-      (flat_id, parking_allotment, parking_slot_no, extra_parking_allotment, extra_vehicle_type, extra_parking_count, extra_parking_slot_no, extra_parking_charge, transformer_apartment, transformer_flat, corpus_fund, electricity_board_source, water_connection_details) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (flat_id, parking_allotment, parking_slot_no, extra_parking_allotment, extra_vehicle_type, extra_parking_count, extra_parking_slot_no, extra_parking_charge, transformer_apartment, transformer_flat, electricity_board_source, water_connection_details) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE
         parking_allotment = VALUES(parking_allotment),
         parking_slot_no = VALUES(parking_slot_no),
@@ -309,7 +310,6 @@ router.post('/', verifyToken, async (req, res) => {
         extra_parking_charge = VALUES(extra_parking_charge),
         transformer_apartment = VALUES(transformer_apartment),
         transformer_flat = VALUES(transformer_flat),
-        corpus_fund = VALUES(corpus_fund),
         electricity_board_source = VALUES(electricity_board_source),
         water_connection_details = VALUES(water_connection_details)`,
       [
@@ -323,7 +323,6 @@ router.post('/', verifyToken, async (req, res) => {
         extra_parking_allotment ? (extra_parking_charge || 0) : 0,
         apartmentInfra.transformer_details || transformer_apartment || null,
         transformer_flat || null,
-        corpus_fund || 0,
         apartmentInfra.electricity_details || electricity_board_source || null,
         apartmentInfra.water_connection_details || water_connection_details || null
       ]
@@ -339,7 +338,7 @@ router.post('/', verifyToken, async (req, res) => {
   } catch (err) {
     await connection.rollback();
     console.error('Create client/onboarding error:', err);
-    res.status(500).json({ error: 'Server error during onboarding' });
+    res.status(500).json({ error: 'Server error', details: err.message, stack: err.stack });
   } finally {
     connection.release();
   }
@@ -418,8 +417,8 @@ router.put('/:id', verifyToken, async (req, res) => {
       await connection.query('DELETE FROM infrastructure_details WHERE flat_id = ?', [oldFlatId]);
       await connection.query(
         `INSERT INTO infrastructure_details 
-        (flat_id, parking_allotment, parking_slot_no, extra_parking_allotment, extra_vehicle_type, extra_parking_count, extra_parking_slot_no, extra_parking_charge, transformer_apartment, transformer_flat, corpus_fund, electricity_board_source, water_connection_details) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (flat_id, parking_allotment, parking_slot_no, extra_parking_allotment, extra_vehicle_type, extra_parking_count, extra_parking_slot_no, extra_parking_charge, transformer_apartment, transformer_flat, electricity_board_source, water_connection_details) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           flat_id,
           parking_allotment || false,
@@ -431,7 +430,6 @@ router.put('/:id', verifyToken, async (req, res) => {
           extra_parking_allotment ? (extra_parking_charge || 0) : 0,
           apartmentInfra.transformer_details || transformer_apartment || null,
           transformer_flat || null,
-          corpus_fund || 0,
           apartmentInfra.electricity_details || electricity_board_source || null,
           apartmentInfra.water_connection_details || water_connection_details || null,
         ]
@@ -457,7 +455,7 @@ router.put('/:id', verifyToken, async (req, res) => {
       // Just update infra details for same flat
       await connection.query(
         `UPDATE infrastructure_details SET 
-          parking_allotment = ?, parking_slot_no = ?, extra_parking_allotment = ?, extra_vehicle_type = ?, extra_parking_count = ?, extra_parking_slot_no = ?, extra_parking_charge = ?, transformer_apartment = ?, transformer_flat = ?, corpus_fund = ?, electricity_board_source = ?, water_connection_details = ?
+          parking_allotment = ?, parking_slot_no = ?, extra_parking_allotment = ?, extra_vehicle_type = ?, extra_parking_count = ?, extra_parking_slot_no = ?, extra_parking_charge = ?, transformer_apartment = ?, transformer_flat = ?, electricity_board_source = ?, water_connection_details = ?
         WHERE flat_id = ?`,
         [
           parking_allotment || false,
@@ -469,7 +467,6 @@ router.put('/:id', verifyToken, async (req, res) => {
           extra_parking_allotment ? (extra_parking_charge || 0) : 0,
           flatDetails.transformer_details || transformer_apartment || null,
           transformer_flat || null,
-          corpus_fund || 0,
           flatDetails.electricity_details || electricity_board_source || null,
           flatDetails.water_connection_details || water_connection_details || null,
           flat_id
@@ -480,7 +477,7 @@ router.put('/:id', verifyToken, async (req, res) => {
     // Update Client
     const combinedPanAadhaar = pan_aadhaar || [normalizedPan, normalizedAadhaar].filter(Boolean).join(' / ') || null;
     await connection.query(
-      'UPDATE clients SET name = ?, phone = ?, email = ?, address = ?, pan_aadhaar = ?, pan_number = ?, aadhaar_number = ?, purchase_date = ?, flat_id = ? WHERE id = ?',
+      'UPDATE clients SET name = ?, phone = ?, email = ?, address = ?, pan_aadhaar = ?, pan_number = ?, aadhaar_number = ?, purchase_date = ?, flat_id = ?, corpus_fund = ? WHERE id = ?',
       [
         name,
         normalizedPhone || null,
@@ -491,6 +488,7 @@ router.put('/:id', verifyToken, async (req, res) => {
         normalizedAadhaar || null,
         purchase_date || null,
         flat_id || oldFlatId,
+        corpus_fund || null,
         req.params.id,
       ]
     );

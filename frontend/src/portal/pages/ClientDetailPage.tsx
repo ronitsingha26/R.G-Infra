@@ -186,7 +186,7 @@ export function ClientDetailPage() {
         <div className="flex flex-wrap gap-3">
           <GenerateDemandLetterButton clientId={client.id} clientEmail={client.email} clientPhone={client.phone} onGenerated={load} />
           <SendWhatsAppButton clientId={client.id} clientPhone={client.phone} dueAmount={currentDueWithGst} type="due" />
-          {client.email && currentDueWithGst > 0 && (
+          {client.email && (
             <SendDueReminderButton clientId={client.id} clientEmail={client.email} totalAmount={flatAmount} totalPaid={totalPaidBase} onSent={load} />
           )}
         </div>

@@ -12,9 +12,9 @@
  */
 
 import {
-  AlertTriangle, ArrowLeft, Bell, Calendar, CheckCircle2, ChevronDown, ChevronUp,
+  AlertTriangle, ArrowLeft, Bell, CheckCircle2, ChevronDown, ChevronUp,
   Circle, Clock, Download, Eye, FileText, HardHat, ImagePlus,
-  Mail, MessageCircle, Pencil, Save, Send, Trash2, Upload, X,
+  Mail, MessageCircle, Pencil, Save, Send, Trash2, Upload,
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -70,7 +70,6 @@ export function WorkProjectionClientPage() {
   const [previewImage, setPreviewImage] = useState<string | null>(null)
 
   // ── Section collapse state ──
-  const [dueOpen, setDueOpen] = useState(true)
   const [demandOpen, setDemandOpen] = useState(true)
   const [reminderOpen, setReminderOpen] = useState(true)
   const [timelineOpen, setTimelineOpen] = useState(true)
@@ -114,10 +113,6 @@ export function WorkProjectionClientPage() {
   const grandTotalAmount = Number(data?.grand_total_amount || data?.total_property_amount || 0)
   const totalDueGeneratedWithGst = Number(data?.total_due_generated_with_gst || data?.total_due_generated || 0)
   const remainingCollectableWithGst = Number(data?.remaining_collectable_with_gst || data?.remaining_collectable || 0)
-  const scheduleCombinedDue = Number(data?.schedule_combined_due || 0)
-  const scheduleCarryOver = Number(data?.schedule_carry_over || 0)
-  const scheduleNextInstallment = Number(data?.schedule_next_installment_amount || 0)
-  const scheduleNextStageAmount = Number(data?.schedule_next_stage_amount || 0)
 
   // Last payment info
   const lastPayment = payments.length > 0 ? payments[0] : null
@@ -391,6 +386,26 @@ export function WorkProjectionClientPage() {
           <MiniCard label="Collectable incl. GST" value={inr(remainingCollectableWithGst)} color="red" />
           <MiniCard label="Advance Payment" value={inr(data.advance_payment || 0)} color={data.advance_payment && data.advance_payment > 0 ? 'emerald' : 'slate'} />
         </div>
+
+        {/* Action Buttons */}
+        <div className="mt-6 flex flex-wrap gap-3 pt-6 border-t border-slate-100">
+          <PortalButton variant="primary" onClick={handleGenerateDL} disabled={generatingDL}>
+            <FileText className="h-4 w-4" />
+            {generatingDL ? 'Generating...' : 'Generate Demand Letter'}
+          </PortalButton>
+          <PortalButton variant="outline" onClick={() => handleSendReminder('email')} disabled={sendingReminder || !data.client.email}>
+            <Mail className="h-4 w-4 text-blue-500" />
+            {sendingReminder ? 'Sending...' : 'Send Email Reminder'}
+          </PortalButton>
+          <PortalButton variant="outline" onClick={() => handleSendReminder('whatsapp')} disabled={sendingWhatsApp || !data.client.phone}>
+            <MessageCircle className="h-4 w-4 text-green-600" />
+            {sendingWhatsApp ? 'Opening...' : 'Send WhatsApp'}
+          </PortalButton>
+          <PortalButton variant="outline" onClick={() => handleSendReminder('email_dl')} disabled={sendingReminder || !data.client.email}>
+            <Send className="h-4 w-4 text-orange-500" />
+            Email + Demand Letter
+          </PortalButton>
+        </div>
       </PortalCard>
 
       {/* ═══ 3. UPDATE WORK PROJECTION ═══ */}
@@ -413,11 +428,14 @@ export function WorkProjectionClientPage() {
                 className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-base font-medium text-slate-900 shadow-sm outline-none ring-orange-400/25 transition focus:border-orange-400 focus:ring-4"
               >
                 <option value="">Choose a milestone...</option>
-                {pendingMilestones.map((m) => (
-                  <option key={m.milestone_name} value={m.milestone_name}>
-                    {m.milestone_name} ({m.milestone_percentage}%)
-                  </option>
-                ))}
+                {data.milestones.map((m) => {
+                  const isCompleted = m.status === 'completed';
+                  return (
+                    <option key={m.milestone_name} value={m.milestone_name} disabled={isCompleted}>
+                      {m.milestone_name} ({m.milestone_percentage}%){isCompleted ? ' - DONE' : ''}
+                    </option>
+                  );
+                })}
               </select>
             </div>
 
@@ -531,50 +549,6 @@ export function WorkProjectionClientPage() {
           </div>
         </PortalCard>
       )}
-
-      {/* ═══ 4. GENERATED DUE DETAILS ═══ */}
-      <CollapsibleSection title="Generated Due Details" icon={<FileText className="h-5 w-5 text-orange-500" />} open={dueOpen} onToggle={() => setDueOpen(o => !o)}>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 mb-4">
-          <MiniCard label="Base Due Generated" value={inr(data.total_due_generated)} color="orange" />
-          <MiniCard label="GST on Due" value={inr(data.total_due_generated_gst || 0)} color="orange" />
-          <MiniCard label="Total Due (incl. GST)" value={inr(totalDueGeneratedWithGst)} color="orange" />
-          <MiniCard label="Total Paid (incl. GST)" value={inr(Number(data.total_paid_with_gst || data.total_paid))} color="emerald" />
-          <MiniCard label="Due Status" value={data.remaining_collectable > 0 ? 'Payment Pending' : 'All Clear'} color={data.remaining_collectable > 0 ? 'red' : 'emerald'} />
-          <MiniCard label="Advance Payment" value={inr(data.advance_payment || 0)} color={data.advance_payment && data.advance_payment > 0 ? 'emerald' : 'slate'} />
-        </div>
-
-        {scheduleCombinedDue > 0 && (
-          <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-            Previous due: <strong>{inr(scheduleCarryOver)}</strong>
-            {scheduleNextStageAmount > 0 && (
-              <> + Current installment: <strong>{inr(scheduleNextStageAmount)}</strong></>
-            )}
-            {scheduleNextInstallment > 0 && (
-              <> = <strong>{inr(scheduleNextInstallment)}</strong></>
-            )}
-          </div>
-        )}
-
-        {/* Action Buttons */}
-        <div className="flex flex-wrap gap-3">
-          <PortalButton variant="primary" onClick={handleGenerateDL} disabled={generatingDL}>
-            <FileText className="h-4 w-4" />
-            {generatingDL ? 'Generating...' : 'Generate Demand Letter'}
-          </PortalButton>
-          <PortalButton variant="outline" onClick={() => handleSendReminder('email')} disabled={sendingReminder || !data.client.email}>
-            <Mail className="h-4 w-4 text-blue-500" />
-            {sendingReminder ? 'Sending...' : 'Send Email Reminder'}
-          </PortalButton>
-          <PortalButton variant="outline" onClick={() => handleSendReminder('whatsapp')} disabled={sendingWhatsApp || !data.client.phone}>
-            <MessageCircle className="h-4 w-4 text-green-600" />
-            {sendingWhatsApp ? 'Opening...' : 'Send WhatsApp'}
-          </PortalButton>
-          <PortalButton variant="outline" onClick={() => handleSendReminder('email_dl')} disabled={sendingReminder || !data.client.email}>
-            <Send className="h-4 w-4 text-orange-500" />
-            Email + Demand Letter
-          </PortalButton>
-        </div>
-      </CollapsibleSection>
 
       {/* ═══ 5. DEMAND LETTERS ═══ */}
       <CollapsibleSection title={`Demand Letters (${demandLetters.length})`} icon={<FileText className="h-5 w-5 text-blue-500" />} open={demandOpen} onToggle={() => setDemandOpen(o => !o)}>

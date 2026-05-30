@@ -321,6 +321,7 @@ export const api = {
     return res.json();
   },
   deleteWorkProjection: (id: number) => request<{ message: string }>(`/work-projection/${id}`, { method: 'DELETE' }),
+  bulkDeleteWorkProjection: (data: { client_ids: number[], milestone_name: string }) => request<{ message: string, deletedCount: number }>('/work-projection/bulk-delete', { method: 'POST', body: JSON.stringify(data) }),
 };
 
 // ─── Types ─────────────────────────────────────

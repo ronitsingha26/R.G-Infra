@@ -10,7 +10,7 @@
 
 import {
   HardHat, ChevronRight, ChevronDown, Search, RefreshCw,
-  Building2, Users, TrendingUp, Zap, Save, X,
+  Building2, Users, Zap, Save,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -59,6 +59,7 @@ type BulkUpdateModalProps = {
 
 function BulkUpdateModal({ open, onClose, apartmentName, clients, onSuccess }: BulkUpdateModalProps) {
   const toast = usePortalToast()
+  const [action, setAction] = useState<'add' | 'delete'>('add')
   const [selectedMilestone, setSelectedMilestone] = useState('')
   const [completionDate, setCompletionDate] = useState(new Date().toISOString().split('T')[0])
   const [dueDate, setDueDate] = useState(() => {
@@ -69,15 +70,43 @@ function BulkUpdateModal({ open, onClose, apartmentName, clients, onSuccess }: B
   const [results, setResults] = useState<{ name: string; status: 'ok' | 'skip' | 'error'; msg?: string }[]>([])
   const [done, setDone] = useState(false)
 
-  const eligibleClients = clients.filter(c => {
-    const pct = Number(c.completed_percentage || 0)
-    return pct < 100
-  })
+  const minProgress = clients.length > 0 
+    ? Math.min(...clients.map(c => Number(c.completed_percentage || 0))) 
+    : 0;
+
+  let currentCumulative = 0;
+  const milestonesWithStatus = DEFAULT_MILESTONES.map(m => {
+    currentCumulative += m.pct;
+    return { ...m, cumulative: currentCumulative };
+  });
+
+  const eligibleClients = action === 'add'
+    ? clients.filter(c => Number(c.completed_percentage || 0) < 100)
+    : clients.filter(c => Number(c.completed_percentage || 0) > 0)
 
   const handleBulkSave = async () => {
     if (!selectedMilestone) return
     setSaving(true)
     setResults([])
+
+    if (action === 'delete') {
+      try {
+        const clientIds = eligibleClients.map(c => c.id)
+        const resData = await api.bulkDeleteWorkProjection({ client_ids: clientIds, milestone_name: selectedMilestone })
+        setDone(true)
+        if (resData.deletedCount > 0) {
+          toast.push({ tone: 'success', title: `Successfully removed milestone for ${resData.deletedCount} clients` })
+          onSuccess()
+        } else {
+          toast.push({ tone: 'info', title: 'No matching milestones found to delete for these clients.' })
+        }
+      } catch (err: any) {
+        toast.push({ tone: 'error', title: err.message || 'Failed to delete' })
+      } finally {
+        setSaving(false)
+      }
+      return
+    }
 
     const res: typeof results = []
     for (const client of eligibleClients) {
@@ -125,14 +154,30 @@ function BulkUpdateModal({ open, onClose, apartmentName, clients, onSuccess }: B
     <Modal open={open} onClose={handleClose} title={`🏗️ Bulk Update — ${apartmentName}`} wide>
       {!done ? (
         <div className="space-y-5">
+          {/* Action Toggle */}
+          <div className="flex bg-slate-100 p-1 rounded-xl">
+            <button
+              onClick={() => setAction('add')}
+              className={`flex-1 py-2 text-sm font-bold rounded-lg transition ${action === 'add' ? 'bg-white text-orange-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              Add / Update Progress
+            </button>
+            <button
+              onClick={() => setAction('delete')}
+              className={`flex-1 py-2 text-sm font-bold rounded-lg transition ${action === 'delete' ? 'bg-white text-red-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              Delete Progress
+            </button>
+          </div>
+
           {/* Info Banner */}
-          <div className="rounded-xl border border-blue-100 bg-blue-50 p-4">
-            <div className="flex items-center gap-2 text-blue-800 font-bold text-sm mb-1">
-              <Zap className="h-4 w-4 text-blue-600" />
-              Update progress for all {eligibleClients.length} clients in {apartmentName} at once
+          <div className={`rounded-xl border p-4 ${action === 'add' ? 'border-blue-100 bg-blue-50' : 'border-red-100 bg-red-50'}`}>
+            <div className={`flex items-center gap-2 font-bold text-sm mb-1 ${action === 'add' ? 'text-blue-800' : 'text-red-800'}`}>
+              <Zap className={`h-4 w-4 ${action === 'add' ? 'text-blue-600' : 'text-red-600'}`} />
+              {action === 'add' ? `Update progress for all ${eligibleClients.length} clients in ${apartmentName} at once` : `Remove milestone progress for all ${eligibleClients.length} clients in ${apartmentName}`}
             </div>
-            <div className="text-xs text-blue-600">
-              Only clients below 100% progress will be updated. Already-completed milestones will be skipped.
+            <div className={`text-xs ${action === 'add' ? 'text-blue-600' : 'text-red-600'}`}>
+              {action === 'add' ? 'Only clients below 100% progress will be updated. Already-completed milestones will be skipped.' : 'This will irreversibly remove the selected milestone from these clients if they have it completed.'}
             </div>
           </div>
 
@@ -162,45 +207,54 @@ function BulkUpdateModal({ open, onClose, apartmentName, clients, onSuccess }: B
               className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-base font-medium text-slate-900 shadow-sm outline-none ring-orange-400/25 transition focus:border-orange-400 focus:ring-4"
             >
               <option value="">Choose milestone...</option>
-              {DEFAULT_MILESTONES.map(m => (
-                <option key={m.name} value={m.name}>{m.name} ({m.pct}%)</option>
-              ))}
+              {milestonesWithStatus.map(m => {
+                const isCompleted = action === 'add' && m.cumulative <= minProgress;
+                return (
+                  <option key={m.name} value={m.name} disabled={isCompleted}>
+                    {m.name} ({m.pct}%){isCompleted ? ' - DONE' : ''}
+                  </option>
+                );
+              })}
             </select>
           </div>
 
-          {/* Dates */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="text-sm font-bold uppercase tracking-wider text-slate-500">
-                Completion Date <span className="text-red-500">*</span>
-              </label>
-              <input type="date" value={completionDate} onChange={e => setCompletionDate(e.target.value)}
-                className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-base font-medium text-slate-900 shadow-sm outline-none ring-orange-400/25 transition focus:border-orange-400 focus:ring-4" />
-            </div>
-            <div>
-              <label className="text-sm font-bold uppercase tracking-wider text-slate-500">
-                Payment Due Date <span className="text-red-500">*</span>
-              </label>
-              <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)}
-                className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-base font-medium text-slate-900 shadow-sm outline-none ring-orange-400/25 transition focus:border-orange-400 focus:ring-4" />
-            </div>
-          </div>
+          {/* Dates & Notes (Only for ADD) */}
+          {action === 'add' && (
+            <>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm font-bold uppercase tracking-wider text-slate-500">
+                    Completion Date <span className="text-red-500">*</span>
+                  </label>
+                  <input type="date" value={completionDate} onChange={e => setCompletionDate(e.target.value)}
+                    className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-base font-medium text-slate-900 shadow-sm outline-none ring-orange-400/25 transition focus:border-orange-400 focus:ring-4" />
+                </div>
+                <div>
+                  <label className="text-sm font-bold uppercase tracking-wider text-slate-500">
+                    Payment Due Date <span className="text-red-500">*</span>
+                  </label>
+                  <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)}
+                    className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-base font-medium text-slate-900 shadow-sm outline-none ring-orange-400/25 transition focus:border-orange-400 focus:ring-4" />
+                </div>
+              </div>
 
-          {/* Notes */}
-          <div>
-            <label className="text-sm font-bold uppercase tracking-wider text-slate-500">Notes (Optional)</label>
-            <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} placeholder="Any remarks..."
-              className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-base text-slate-900 shadow-sm outline-none ring-orange-400/25 transition focus:border-orange-400 focus:ring-4 resize-none" />
-          </div>
+              <div>
+                <label className="text-sm font-bold uppercase tracking-wider text-slate-500">Notes (Optional)</label>
+                <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} placeholder="Any remarks..."
+                  className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-base text-slate-900 shadow-sm outline-none ring-orange-400/25 transition focus:border-orange-400 focus:ring-4 resize-none" />
+              </div>
+            </>
+          )}
 
-          <div className="flex justify-end gap-3">
+          <div className="flex justify-end gap-3 mt-4">
             <PortalButton variant="outline" onClick={handleClose}>Cancel</PortalButton>
             <PortalButton
               onClick={handleBulkSave}
               disabled={saving || !selectedMilestone || eligibleClients.length === 0}
+              className={action === 'delete' ? '!bg-red-500 hover:!bg-red-600 focus:!ring-red-500/20' : ''}
             >
               <Save className="h-4 w-4" />
-              {saving ? `Updating ${eligibleClients.length} clients...` : `Update All ${eligibleClients.length} Clients`}
+              {saving ? `Processing...` : (action === 'add' ? `Update All ${eligibleClients.length} Clients` : `Delete Milestone for ${eligibleClients.length} Clients`)}
             </PortalButton>
           </div>
         </div>
@@ -401,12 +455,14 @@ function ApartmentCard({
 
 export function WorkProjectionPage() {
   const toast = usePortalToast()
+  const navigate = useNavigate()
   const [clients, setClients] = useState<WorkProjectionClient[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [expandedApts, setExpandedApts] = useState<Set<string>>(new Set())
   const [bulkModal, setBulkModal] = useState<{ open: boolean; group: ApartmentGroup | null }>({ open: false, group: null })
+  const [activeTab, setActiveTab] = useState<'bulk' | 'client'>('bulk')
 
   const load = async () => {
     try {
@@ -505,6 +561,32 @@ export function WorkProjectionPage() {
         </button>
       </div>
 
+      {/* ═══ TAB TOGGLE ═══ */}
+      <div className="flex rounded-2xl bg-slate-100 p-1.5 shadow-inner">
+        <button
+          onClick={() => setActiveTab('bulk')}
+          className={`flex-1 flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-bold transition-all duration-200 ${
+            activeTab === 'bulk'
+              ? 'bg-white text-orange-600 shadow-md'
+              : 'text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          <Building2 className="h-4 w-4" />
+          Bulk Block Projection
+        </button>
+        <button
+          onClick={() => setActiveTab('client')}
+          className={`flex-1 flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-bold transition-all duration-200 ${
+            activeTab === 'client'
+              ? 'bg-white text-orange-600 shadow-md'
+              : 'text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          <Users className="h-4 w-4" />
+          Client Projection Update
+        </button>
+      </div>
+
       {/* Search & Filters */}
       <PortalCard>
         <div className="grid gap-4 sm:grid-cols-2">
@@ -514,7 +596,7 @@ export function WorkProjectionPage() {
               type="text"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Search by name, ID, flat or apartment..."
+              placeholder={activeTab === 'bulk' ? 'Search by apartment or block...' : 'Search by name, ID, flat or apartment...'}
               className="w-full rounded-xl border border-slate-200 bg-white py-3.5 pl-11 pr-4 text-base font-medium text-slate-900 shadow-sm outline-none ring-orange-400/25 transition placeholder:text-slate-400 focus:border-orange-400 focus:ring-4"
             />
           </div>
@@ -552,21 +634,102 @@ export function WorkProjectionPage() {
         </PortalCard>
       </div>
 
-      {/* Apartment Groups */}
-      {groups.length === 0 ? (
-        <EmptyState title="No clients found" sub="Try adjusting your search or filter" />
-      ) : (
-        <div className="space-y-4">
-          {groups.map(group => (
-            <ApartmentCard
-              key={group.apartment_name}
-              group={group}
-              expanded={expandedApts.has(group.apartment_name)}
-              onToggle={() => toggleApt(group.apartment_name)}
-              onBulkUpdate={() => setBulkModal({ open: true, group })}
-            />
-          ))}
-        </div>
+      {/* ═══ TAB 1: BULK BLOCK PROJECTION ═══ */}
+      {activeTab === 'bulk' && (
+        <>
+          {groups.length === 0 ? (
+            <EmptyState title="No blocks found" sub="Try adjusting your search or filter" />
+          ) : (
+            <div className="space-y-4">
+              {groups.map(group => (
+                <ApartmentCard
+                  key={group.apartment_name}
+                  group={group}
+                  expanded={expandedApts.has(group.apartment_name)}
+                  onToggle={() => toggleApt(group.apartment_name)}
+                  onBulkUpdate={() => setBulkModal({ open: true, group })}
+                />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ═══ TAB 2: CLIENT PROJECTION UPDATE ═══ */}
+      {activeTab === 'client' && (
+        <>
+          {filtered.length === 0 ? (
+            <EmptyState title="No clients found" sub="Try adjusting your search or filter" />
+          ) : (
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-slate-50 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    <tr>
+                      <th className="px-5 py-3">Client</th>
+                      <th className="px-5 py-3">Client ID</th>
+                      <th className="px-5 py-3">Apartment</th>
+                      <th className="px-5 py-3">Flat</th>
+                      <th className="px-5 py-3 text-right">Flat Value</th>
+                      <th className="px-5 py-3 text-center" style={{ minWidth: '180px' }}>Progress</th>
+                      <th className="px-5 py-3 text-center">Status</th>
+                      <th className="px-5 py-3 text-right">Last Updated</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {filtered.map(client => {
+                      const pct = Number(client.completed_percentage || 0)
+                      return (
+                        <tr
+                          key={client.id}
+                          onClick={() => navigate(`/portal/work-projection/${client.id}`)}
+                          className="cursor-pointer transition hover:bg-orange-50/50"
+                        >
+                          <td className="px-5 py-4">
+                            <div className="font-bold text-slate-900">{client.name}</div>
+                          </td>
+                          <td className="px-5 py-4 text-xs font-mono text-orange-600 font-bold">{client.unique_client_id || '—'}</td>
+                          <td className="px-5 py-4 text-slate-600">{client.apartment_name || '—'}</td>
+                          <td className="px-5 py-4">
+                            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">
+                              {client.flat_number || '—'}
+                            </span>
+                          </td>
+                          <td className="px-5 py-4 text-right font-semibold text-slate-800">{Number(client.total_amount) > 0 ? inr(client.total_amount) : '—'}</td>
+                          <td className="px-5 py-4">
+                            <div className="flex items-center gap-3">
+                              <div className="flex-1 h-2.5 overflow-hidden rounded-full bg-slate-100">
+                                <div
+                                  className={`h-full rounded-full transition-all duration-700 ${pct >= 100 ? 'bg-emerald-500' : 'bg-gradient-to-r from-orange-400 to-orange-500'}`}
+                                  style={{ width: `${Math.min(pct, 100)}%` }}
+                                />
+                              </div>
+                              <span className={`text-sm font-extrabold w-12 text-right shrink-0 ${pct >= 100 ? 'text-emerald-600' : pct > 0 ? 'text-orange-600' : 'text-slate-400'}`}>
+                                {pct}%
+                              </span>
+                            </div>
+                          </td>
+                          <td className="px-5 py-4 text-center">
+                            <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${
+                              pct >= 100 ? 'bg-emerald-100 text-emerald-700' :
+                              pct > 0 ? 'bg-orange-100 text-orange-700' :
+                              'bg-slate-100 text-slate-500'
+                            }`}>
+                              {pct >= 100 ? 'Completed' : pct > 0 ? 'In Progress' : 'Not Started'}
+                            </span>
+                          </td>
+                          <td className="px-5 py-4 text-right text-xs text-slate-400">
+                            {client.last_updated ? new Date(client.last_updated).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       {/* Bulk Update Modal */}
@@ -582,3 +745,4 @@ export function WorkProjectionPage() {
     </div>
   )
 }
+

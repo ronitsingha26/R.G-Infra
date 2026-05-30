@@ -458,28 +458,28 @@ export function ProjectsPage() {
 
       {/* Stats */}
       <div className="grid gap-4 sm:grid-cols-4">
-        <PortalCard>
+        <PortalCard className="!bg-gradient-to-br !from-orange-400 !to-orange-600 !border-orange-500 shadow-orange-500/20">
           <div className="flex items-center gap-3">
-            <div className="h-12 w-12 rounded-xl bg-orange-50 flex items-center justify-center"><Briefcase className="h-6 w-6 text-orange-500" /></div>
-            <div><div className="text-xs text-slate-400 font-semibold uppercase tracking-wide">Properties</div><div className="text-2xl font-extrabold text-slate-900">{properties.length}</div></div>
+            <div className="h-12 w-12 rounded-xl bg-white/20 flex items-center justify-center backdrop-blur-sm"><Briefcase className="h-6 w-6 text-white" /></div>
+            <div><div className="text-xs text-orange-100 font-semibold uppercase tracking-wide">Properties</div><div className="text-2xl font-extrabold text-white">{properties.length}</div></div>
           </div>
         </PortalCard>
-        <PortalCard>
+        <PortalCard className="!bg-gradient-to-br !from-blue-400 !to-blue-600 !border-blue-500 shadow-blue-500/20">
           <div className="flex items-center gap-3">
-            <div className="h-12 w-12 rounded-xl bg-blue-50 flex items-center justify-center"><Building2 className="h-6 w-6 text-blue-500" /></div>
-            <div><div className="text-xs text-slate-400 font-semibold uppercase tracking-wide">Apartments</div><div className="text-2xl font-extrabold text-slate-900">{apartments.length}</div></div>
+            <div className="h-12 w-12 rounded-xl bg-white/20 flex items-center justify-center backdrop-blur-sm"><Building2 className="h-6 w-6 text-white" /></div>
+            <div><div className="text-xs text-blue-100 font-semibold uppercase tracking-wide">Apartments</div><div className="text-2xl font-extrabold text-white">{apartments.length}</div></div>
           </div>
         </PortalCard>
-        <PortalCard>
+        <PortalCard className="!bg-gradient-to-br !from-emerald-400 !to-emerald-600 !border-emerald-500 shadow-emerald-500/20">
           <div className="flex items-center gap-3">
-            <div className="h-12 w-12 rounded-xl bg-emerald-50 flex items-center justify-center"><Users className="h-6 w-6 text-emerald-500" /></div>
-            <div><div className="text-xs text-slate-400 font-semibold uppercase tracking-wide">Booked Flats</div><div className="text-2xl font-extrabold text-emerald-600">{bookedFlats}</div></div>
+            <div className="h-12 w-12 rounded-xl bg-white/20 flex items-center justify-center backdrop-blur-sm"><Users className="h-6 w-6 text-white" /></div>
+            <div><div className="text-xs text-emerald-100 font-semibold uppercase tracking-wide">Booked Flats</div><div className="text-2xl font-extrabold text-white">{bookedFlats}</div></div>
           </div>
         </PortalCard>
-        <PortalCard>
+        <PortalCard className="!bg-gradient-to-br !from-amber-400 !to-amber-600 !border-amber-500 shadow-amber-500/20">
           <div className="flex items-center gap-3">
-            <div className="h-12 w-12 rounded-xl bg-amber-50 flex items-center justify-center"><Home className="h-6 w-6 text-amber-500" /></div>
-            <div><div className="text-xs text-slate-400 font-semibold uppercase tracking-wide">Available Flats</div><div className="text-2xl font-extrabold text-amber-600">{availableFlats}</div></div>
+            <div className="h-12 w-12 rounded-xl bg-white/20 flex items-center justify-center backdrop-blur-sm"><Home className="h-6 w-6 text-white" /></div>
+            <div><div className="text-xs text-amber-100 font-semibold uppercase tracking-wide">Available Flats</div><div className="text-2xl font-extrabold text-white">{availableFlats}</div></div>
           </div>
         </PortalCard>
       </div>
